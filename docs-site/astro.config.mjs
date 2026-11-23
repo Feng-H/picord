@@ -60,16 +60,16 @@ export default defineConfig({
             },
         },
         starlight({
-            title: "Pi Pocket docs",
+            title: "Picord docs",
             description:
-                "Extend Pi Pocket: give Pi tools, rules, and checks, and add pages, buttons, and commands to the app.",
+                "Extend Picord: give Pi tools, rules, and checks, and add pages, buttons, and commands to the app.",
             logo: { src: "./public/icon.svg", alt: "" },
             favicon: "/icon.svg",
             social: [
                 {
                     icon: "github",
                     label: "GitHub",
-                    href: "https://github.com/TannerMidd/pi-pocket",
+                    href: "https://github.com/Feng-H/picord",
                 },
             ],
             components: {
