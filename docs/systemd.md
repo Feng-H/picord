@@ -6,7 +6,7 @@ Pi Pocket ships a systemd template unit at [`contrib/systemd/pi-pocket@.service`
 sudo systemctl enable --now pi-pocket@lan
 ```
 
-The modes are `local`, `lan`, `cloudflare`, `tailscale`, and `tailscale-serve`. [Remote access](../README.md#remote-access) explains who can connect in each one.
+The modes are `local`, `lan`, `cloudflare`, `tailscale`, and `tailscale-serve`. [Remote access](../README-UPSTREAM.md#remote-access) explains who can connect in each one.
 
 Enable one instance at a time. Every instance uses the same port and data folder, and a second launcher on that folder now refuses to start (it names the pid that holds it) rather than adopting the first one's Tailscale Serve mount.
 
