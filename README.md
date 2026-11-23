@@ -1,15 +1,14 @@
 <div align="center">
 
-# Pi Pocket · 个人版
+# Picord
 
-**我的第二大脑运行时——在 [TannerMidd/pi-pocket](https://github.com/TannerMidd/pi-pocket) 之上的自主改造版本。**
-**My second-brain runtime — a fork of [TannerMidd/pi-pocket](https://github.com/TannerMidd/pi-pocket), extended for how I actually use it.**
+**基于 Pi 的自托管 Discord 风格个人 Agent 运行时**  
+**A self-hosted, Discord-style personal Agent runtime built on Pi.**
 
-[原始 README(英文)](./README-UPSTREAM.md) · [功能全览 / Feature tour](docs/features.md) · [上游文档 / Upstream docs](https://tannermidd.github.io/pi-pocket/docs/)
+[功能全览 / Feature tour](docs/features.md) · [致敬原型 / Upstream: pi-pocket](https://github.com/TannerMidd/pi-pocket)
 
 [![MIT license](https://img.shields.io/badge/license-MIT-ff9e64)](LICENSE)
 [![Node.js 22.19+](https://img.shields.io/badge/node-%E2%89%A5%2022.19-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org)
-[![Upstream](https://img.shields.io/badge/upstream-v0.29.0-7aa2f7)](https://github.com/TannerMidd/pi-pocket/releases)
 
 </div>
 
@@ -88,8 +87,8 @@ npm install
 node bin/pi-pocket.js
 ```
 
-## 上游与许可 / Upstream & license
+## 原型与许可 / Origins & license
 
-- 原始 README(英文,未改动):[README-UPSTREAM.md](./README-UPSTREAM.md)
-- 上游仓库:[TannerMidd/pi-pocket](https://github.com/TannerMidd/pi-pocket)。本 fork 不自动跟随;好的设计与功能(如 Session cleanup)按需 cherry-pick——上面的真删除就是从 0.30 借来的
-- MIT。感谢 [@TannerMidd](https://github.com/TannerMidd) 的出色工作
+- 本项目由衷致敬 Tanner Middleton 的开源项目 [pi-pocket](https://github.com/TannerMidd/pi-pocket)（MIT 许可）。我们在其优雅的 Agent 运行时基础上独立演进，去除了外部聊天平台中继依赖，将 Discord 频道交互原生内置到自托管 Web/PWA 中，打造真正自由自主的个人智能体第二大脑。
+- 原项目英文 README：[README-UPSTREAM.md](./README-UPSTREAM.md)
+- MIT License。再次感谢 [@TannerMidd](https://github.com/TannerMidd) 的出色工作。

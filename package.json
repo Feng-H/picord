@@ -1,9 +1,11 @@
 {
-    "name": "pi-pocket",
+    "name": "picord",
     "version": "0.29.0",
-    "description": "A durable, multiplayer, mobile-first web app for Pi agents, built on Pi Durable",
+    "description": "A self-hosted, Discord-style personal Agent runtime built on Pi",
     "keywords": [
         "pi",
+        "discord",
+        "channels",
         "ai",
         "agent",
         "coding-agent",
@@ -16,13 +18,14 @@
     "author": "Tanner Middleton",
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/Feng-H/pi-pocket.git"
+        "url": "git+https://github.com/Feng-H/picord.git"
     },
-    "homepage": "https://github.com/Feng-H/pi-pocket#readme",
+    "homepage": "https://github.com/Feng-H/picord#readme",
     "bugs": {
-        "url": "https://github.com/Feng-H/pi-pocket/issues"
+        "url": "https://github.com/Feng-H/picord/issues"
     },
     "bin": {
+        "picord": "bin/pi-pocket.js",
         "pi-pocket": "bin/pi-pocket.js"
     },
     "files": [

@@ -130,7 +130,7 @@ const TARGET_REF = "refs/pocket-update/target";
 const MAX_NOTES = 60_000;
 const NPM_TIMEOUT_MS = 20 * 60_000;
 const FETCH_TIMEOUT_MS = 2 * 60_000;
-const DEFAULT_REPOSITORY = "https://github.com/Feng-H/pi-pocket.git";
+const DEFAULT_REPOSITORY = "https://github.com/Feng-H/picord.git";
 
 /** `package.json`'s repository, as a git address. */
 export function repositoryOf(appRoot: string): string {
