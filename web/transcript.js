@@ -859,7 +859,10 @@ function UserMessage({ entry, view, users }) {
                         ${
                             via
                                 ? html`<${FencedText} text=${body} />`
-                                : html`<${QuotedText} text=${skill ? skill[3] : body} />`
+                                : html`<${QuotedText}
+                                      text=${skill ? skill[3] : body}
+                                      quotes=${entry.quotes}
+                                  />`
                         }
                     </div>`
                 }
@@ -870,18 +873,60 @@ function UserMessage({ entry, view, users }) {
 }
 
 /** A person's message with its quotes (Reply's, or typed as "> …") shown as quotes, each where it was written. */
-function QuotedText({ text }) {
+function QuotedText({ text, quotes }) {
     const parts = quoteParts(text);
 
     if (!parts) {
         return html`<${CodedText} text=${text} />`;
     }
 
-    return parts.map((part) =>
-        part.quote === undefined
-            ? html`<${CodedText} text=${part.text} />`
-            : html`<blockquote class="reply-quote" data-part="reply-quote">${part.quote}</blockquote>`,
-    );
+    let quoteIndex = 0;
+
+    return parts.map((part) => {
+        if (part.quote === undefined) {
+            return html`<${CodedText} text=${part.text} />`;
+        }
+
+        const quoteInfo = quotes && quotes[quoteIndex] ? quotes[quoteIndex++] : undefined;
+
+        const jump = (event) => {
+            event.stopPropagation();
+
+            if (!quoteInfo || typeof quoteInfo.sessionId !== "number") {
+                return;
+            }
+
+            navigate(quoteInfo.sessionId);
+
+            if (quoteInfo.entryId !== undefined) {
+                requestAnimationFrame(() => {
+                    const target = document.getElementById(`entry-${quoteInfo.entryId}`);
+
+                    if (target) {
+                        target.scrollIntoView({ behavior: "smooth", block: "center" });
+                        target.classList.add("flash-target");
+                        setTimeout(() => target.classList.remove("flash-target"), 2000);
+                    }
+                });
+            }
+        };
+
+        return html`<blockquote class="reply-quote" data-part="reply-quote">
+            ${
+                quoteInfo &&
+                html`<button
+                type="button"
+                class="quote-origin-pill"
+                title=${t("Jump to quoted message")}
+                onClick=${jump}
+            >
+                <span class="quote-origin-icon">↩</span>
+                <span>${quoteInfo.origin}${quoteInfo.entryId !== undefined ? ` · entry ${quoteInfo.entryId}` : ""}</span>
+            </button>`
+            }
+            ${part.quote}
+        </blockquote>`;
+    });
 }
 
 function Collapsible({ text, limit = 600 }) {
@@ -2485,6 +2530,8 @@ function Reply({ item, conversationId }) {
     return html`<div
         class=${`reply ${fresh ? "enter" : ""}`}
         data-part="reply"
+        data-entry-id=${entry.id}
+        data-session-id=${conversationId}
         id=${item.anchor ? `entry-${entry.id}` : undefined}
     >
         ${blocks.map(({ block, growing }, index) => {

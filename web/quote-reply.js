@@ -29,7 +29,8 @@ function selected() {
     }
 
     const range = selection.getRangeAt(0);
-    const within = (node) => (node.nodeType === 1 ? node : node.parentElement)?.closest(".reply");
+    const within = (node) =>
+        (node.nodeType === 1 ? node : node.parentElement)?.closest(".reply, .prompt-body");
     // A triple-click can end the range at the start of the next block: that end does not count.
     const end =
         range.endOffset === 0 && range.endContainer !== range.startContainer
@@ -82,7 +83,42 @@ function selected() {
     const width = (shown.reply ? REPLY_WIDTH : 0) + (shown.pip ? PIP_WIDTH : 0);
     const left = Math.max(8, Math.min(anchor - (below ? width : 0), innerWidth - width - 8));
 
-    return { text, top, left, shown };
+    // Extract quote origin coordinates
+    let origin = undefined;
+    const replyEl = from.closest(".reply");
+    const promptRowEl = from.closest(".user-row");
+
+    if (replyEl) {
+        const entryId = replyEl.dataset.entryId ? Number(replyEl.dataset.entryId) : undefined;
+        const sessionId = replyEl.dataset.sessionId
+            ? Number(replyEl.dataset.sessionId)
+            : store.state.conversationId;
+        const session = store.state.sessions?.find((s) => s.id === sessionId);
+
+        origin = {
+            sessionId,
+            entryId,
+            channel: session?.channel ? session.title : undefined,
+            speaker: "assistant",
+            text,
+        };
+    } else if (promptRowEl) {
+        const idStr = promptRowEl.id;
+        const entryId = idStr && idStr.startsWith("entry-") ? Number(idStr.slice(6)) : undefined;
+        const sessionId = store.state.conversationId;
+        const session = store.state.sessions?.find((s) => s.id === sessionId);
+        const speaker = promptRowEl.querySelector(".prompt-author")?.textContent?.trim() || "user";
+
+        origin = {
+            sessionId,
+            entryId,
+            channel: session?.channel ? session.title : undefined,
+            speaker,
+            text,
+        };
+    }
+
+    return { text, top, left, shown, origin };
 }
 
 export function QuoteReplyButton() {
@@ -135,7 +171,7 @@ export function QuoteReplyButton() {
             return done();
         }
 
-        quoteReply(at.text);
+        quoteReply(at.text, at.origin);
         done();
 
         if (!coarse) {

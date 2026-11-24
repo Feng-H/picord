@@ -73,6 +73,7 @@ import { MAX_STT, sttConfigured, transcribeAudio } from "./stt.ts";
 import { isThinkingLevel, THINKING_LEVELS } from "./models.ts";
 import { writePiSession } from "./pi-sessions.ts";
 import { snippet } from "./projection.ts";
+import { type QuoteOrigin, validateQuotes, formatQuoteContextBlock } from "./quote-provenance.ts";
 import {
     globalModelSettings,
     piGlobalSettings,
@@ -150,6 +151,11 @@ export interface SubmitRequest {
      * it is, unseen by people (`CONTEXT_BLOCK`).
      */
     about?: { session: number };
+    /**
+     * Quoted passage origins (cross-session or cross-channel citations): session ID, entry ID, channel, speaker.
+     * The model receives these as a structured `<pocket-context quotes>` block.
+     */
+    quotes?: QuoteOrigin[];
 }
 
 /** How many `@` mentioned files go along with a message, and how much of them. */
@@ -930,6 +936,7 @@ export class Commands {
             via === undefined ? written : `[via ${via}] ${written}`,
         );
         const about = this.#aboutSession(id, user, request.about);
+        const quoteContext = this.#aboutQuotes(user, request.quotes);
         // Channel mentions: #name tokens that name a channel of this server say which session each is, for Pi alone.
         const channelContext = await this.#mentionedChannels(typed);
         const mentioned =
@@ -943,6 +950,7 @@ export class Commands {
                 part.type === "text" ? { ...part, text: app.hidden.replace(part.text, id) } : part,
             ),
             ...(about === undefined ? [] : [{ type: "text" as const, text: about }]),
+            ...(quoteContext === undefined ? [] : [{ type: "text" as const, text: quoteContext }]),
             ...(channelContext === undefined
                 ? []
                 : [{ type: "text" as const, text: channelContext }]),
@@ -1279,6 +1287,36 @@ export class Commands {
             "Read that session with session_read for more context when the question needs it.",
             "</pocket-context>",
         ].join("\n");
+    }
+
+    /**
+     * For a message that carries quoted passages from earlier turns/sessions:
+     * Validates access with app.canSee and returns a structured <pocket-context quotes> block for the model.
+     */
+    #aboutQuotes(user: User, quotes: SubmitRequest["quotes"]): string | undefined {
+        if (!quotes || quotes.length === 0) {
+            return undefined;
+        }
+
+        const app = this.#app;
+        const validated = validateQuotes(quotes, {
+            canSee: (sessionId) => app.canSee(user, sessionId as unknown as ConversationId),
+            getSessionMeta: (sessionId) => {
+                const meta = app.sessionMeta(sessionId as unknown as ConversationId);
+
+                if (!meta) {
+                    return undefined;
+                }
+
+                return {
+                    title: meta.title,
+                    channel: meta.channel,
+                    archived: meta.archived,
+                };
+            },
+        });
+
+        return formatQuoteContextBlock(validated);
     }
 
     /**

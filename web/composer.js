@@ -1144,7 +1144,20 @@ export function Composer() {
 
             words = quoted.text;
             at = quoted.at;
-            added.push({ start: quoted.start, end: quoted.end, text: quoted.block });
+            added.push({
+                start: quoted.start,
+                end: quoted.end,
+                text: quoted.block,
+                origin: each.sessionId
+                    ? {
+                          sessionId: each.sessionId,
+                          entryId: each.entryId,
+                          channel: each.channel,
+                          speaker: each.speaker,
+                          text: each.text,
+                      }
+                    : undefined,
+            });
         }
 
         // The pieces there move with the edit (`update`), and the new ones join them.
@@ -1563,6 +1576,10 @@ export function Composer() {
             return;
         }
 
+        const quotesPayload = piecesNow.current
+            .filter((p) => p.origin && text.startsWith(p.text, p.start))
+            .map((p) => p.origin);
+
         const ok = await attempt(() =>
             actions.submit(
                 message,
@@ -1576,6 +1593,8 @@ export function Composer() {
                     : "followUp",
                 inlineFiles && mentionsFiles,
                 record.requestId,
+                undefined,
+                quotesPayload,
             ),
         );
 

@@ -2567,7 +2567,15 @@ const answered = (key) => (answer) => {
 export const actions = {
     /** `inlineFiles`: the files the message mentions with @ go along with it. */
     /** `inlineFiles`: the files the message mentions with @ go along with it. `audioLanguage`: hear attached audio as. */
-    submit: (text, attachments, mode, inlineFiles = false, requestId = uid(), audioLanguage) =>
+    submit: (
+        text,
+        attachments,
+        mode,
+        inlineFiles = false,
+        requestId = uid(),
+        audioLanguage,
+        quotes,
+    ) =>
         api(`c/${current()}/submit`, {
             text,
             attachments,
@@ -2575,6 +2583,7 @@ export const actions = {
             requestId,
             ...(inlineFiles ? { inlineFiles } : {}),
             ...(audioLanguage ? { audioLanguage } : {}),
+            ...(quotes && quotes.length > 0 ? { quotes } : {}),
         }).then(answered("submissionId")),
     /** Run a command in the session's folder (`!`); `context: false` keeps it from Pi (`!!`). */
     shell: (command, context, requestId = uid()) =>
@@ -2979,11 +2988,11 @@ export const showsPip = (state = store.state) =>
     (state.conversationId === state.pip?.id || state.view.conversation?.pip === true);
 
 /** Reply to a passage of the conversation shown: on PiP's board, it is PiP's quote. */
-export function quoteReply(text) {
+export function quoteReply(text, origin) {
     store.set((state) =>
         showsPip(state)
-            ? { pipQuote: { text } }
-            : { replyQuotes: [...state.replyQuotes, { text }] },
+            ? { pipQuote: { text, ...origin } }
+            : { replyQuotes: [...state.replyQuotes, { text, ...origin }] },
     );
 }
 

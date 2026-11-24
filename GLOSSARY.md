@@ -63,3 +63,21 @@ _Avoid_: Shadow database, message cache, dump buffer.
 **Transcript Excerpt**:
 A trimmed text snippet surrounding a matched search keyword, displaying relative timestamps, stable entry IDs, and originating channel labels.
 _Avoid_: Log line, match snippet, summary clip.
+
+## Quote & Mention Provenance
+
+**Quote Provenance**:
+The structured origin metadata associated with a quoted passage, identifying its originating session ID, channel name, entry ID, and author.
+_Avoid_: Quote link, message ref, citation.
+
+**Quote Origin**:
+The coordinate referencing an exact source turn within a session or channel (e.g. `#general` entry 42), enabling bidirectional navigation.
+_Avoid_: Message URL, turn pointer, backlink coordinate.
+
+**Context Block (Quote)**:
+The server-injected `<pocket-context quote ...>` structure that provides the agent model with verified origin coordinates while leaving human transcript text as clean Markdown.
+_Avoid_: System prompt injection, prompt wrapper, invisible quote.
+
+**Jump-to-Source**:
+The client-side navigation capability that takes the user directly to the original quoted message across sessions or channels upon clicking a quote origin capsule.
+_Avoid_: Deep link, scroll jump, backlink hop.

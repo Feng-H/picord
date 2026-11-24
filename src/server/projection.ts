@@ -44,6 +44,14 @@ export type ClientBlock =
       };
 
 /** `at`: when the message was made, by the server's clock (milliseconds), where the message says. */
+export type ProjectedQuote = {
+    origin: string;
+    sessionId: number;
+    entryId?: number;
+    speaker?: string;
+    text: string;
+};
+
 export type ClientEntry =
     | {
           id: number;
@@ -52,6 +60,7 @@ export type ClientEntry =
           images: number;
           from?: string;
           files?: string[];
+          quotes?: ProjectedQuote[];
           at?: number;
           /** Set while a module presents this input. Nothing here is stored. */
           presentation?: EntryPresentationView;
@@ -461,11 +470,31 @@ function madeAt(message: Record<string, unknown> | undefined): { at?: number } {
     return typeof at === "number" && Number.isFinite(at) && at > 0 ? { at } : {};
 }
 
+/** Parse quote origin metadata from a <pocket-context quotes> block. */
+function parseQuoteContext(text: string): ProjectedQuote[] {
+    const quotes: ProjectedQuote[] = [];
+    const re = /- origin="([^"]+)" \(session (\d+)(?:, entry (\d+))?(?:, by ([^)]+))?\): "(.*)"/g;
+    let match: RegExpExecArray | null;
+
+    while ((match = re.exec(text)) !== null) {
+        quotes.push({
+            origin: match[1]!,
+            sessionId: Number(match[2]),
+            entryId: match[3] ? Number(match[3]) : undefined,
+            speaker: match[4],
+            text: match[5]!,
+        });
+    }
+
+    return quotes;
+}
+
 /** The text, images, and file names of a user message. File contents stay out of the view. */
 function userPieces(message: Record<string, unknown> | undefined): {
     raw: string;
     images: number;
     files?: string[];
+    quotes?: ProjectedQuote[];
 } {
     const content = message?.content;
     const images = countImages(content);
@@ -490,7 +519,23 @@ function userPieces(message: Record<string, unknown> | undefined): {
             : parts.filter((part, index) => !isFile(part, index) && !isContext(part, index)),
     );
 
-    return files.length === 0 ? { raw, images } : { raw, images, files };
+    const quoteBlock = (parts ?? []).find(
+        (part) =>
+            part.type === "text" &&
+            typeof part.text === "string" &&
+            part.text.startsWith(`${CONTEXT_BLOCK} quotes>`),
+    );
+    const quotes =
+        quoteBlock && typeof quoteBlock.text === "string"
+            ? parseQuoteContext(quoteBlock.text)
+            : undefined;
+
+    return {
+        raw,
+        images,
+        ...(files.length === 0 ? {} : { files }),
+        ...(quotes && quotes.length > 0 ? { quotes } : {}),
+    };
 }
 
 /**
@@ -501,7 +546,7 @@ function userPieces(message: Record<string, unknown> | undefined): {
 function projectUserMessage(
     id: number,
     message: Record<string, unknown> | undefined,
-    pieces: { raw: string; images: number; files?: string[] },
+    pieces: { raw: string; images: number; files?: string[]; quotes?: ProjectedQuote[] },
     data: unknown,
     full: boolean,
     spec: RegisteredPresentation | undefined,
@@ -512,6 +557,7 @@ function projectUserMessage(
     const shown = spec === undefined || full ? { text } : clip(text, OUTPUT_LIMIT);
     const summary = spec === undefined ? undefined : presentationSummary(data);
     const named = pieces.files === undefined ? {} : { files: pieces.files };
+    const quoted = pieces.quotes === undefined ? {} : { quotes: pieces.quotes };
 
     return {
         id,
@@ -520,6 +566,7 @@ function projectUserMessage(
         images: pieces.images,
         ...(from === null ? {} : { from: from[1]! }),
         ...named,
+        ...quoted,
         ...madeAt(message),
         ...(spec === undefined
             ? {}

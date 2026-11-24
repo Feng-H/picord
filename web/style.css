@@ -21863,6 +21863,49 @@ pre.gallery-code {
     margin-top: 0.4rem;
 }
 
+.quote-origin-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 6px;
+    margin-bottom: 4px;
+    font-size: 11px;
+    line-height: 1.4;
+    font-weight: 500;
+    color: var(--accent);
+    background: var(--shade-1);
+    border: 1px solid var(--hair-1);
+    border-radius: 9999px;
+    cursor: pointer;
+    user-select: none;
+    width: fit-content;
+}
+
+.quote-origin-pill:hover {
+    background: var(--shade-2);
+    border-color: var(--accent);
+}
+
+.quote-origin-icon {
+    font-size: 10px;
+    opacity: 0.8;
+}
+
+.flash-target {
+    animation: flash-highlight 1.8s ease-out;
+}
+
+@keyframes flash-highlight {
+    0% {
+        outline: 2px solid var(--accent);
+        background-color: var(--shade-2);
+    }
+    100% {
+        outline: 2px solid transparent;
+        background-color: transparent;
+    }
+}
+
 /* Quotes Reply put in the message box (quote-box.js). The box keeps its own text, which goes clear while there is a
  * quote; the drawing under it shows the same lines, each quote styled. Only color, fills, and lines differ there: a
  * change of size, weight, or spacing would move the words away from the caret. */
