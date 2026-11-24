@@ -189,12 +189,30 @@ export function createHandler(options: HttpOptions) {
                 return await serveFile(request, response, katexFont(parts[2]!), "font/woff2");
             }
 
-            if (parts[0] === "login" && (request.method === "GET" || request.method === "POST")) {
-                return await login(auth, request, response, url);
+            if (parts[0] === "login") {
+                if (request.method === "HEAD") {
+                    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+                    response.end();
+
+                    return;
+                }
+
+                if (request.method === "GET" || request.method === "POST") {
+                    return await login(auth, request, response, url);
+                }
             }
 
-            if (parts[0] === "register" && (request.method === "GET" || request.method === "POST")) {
-                return await register(app, auth, request, response, url);
+            if (parts[0] === "register") {
+                if (request.method === "HEAD") {
+                    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+                    response.end();
+
+                    return;
+                }
+
+                if (request.method === "GET" || request.method === "POST") {
+                    return await register(app, auth, request, response, url);
+                }
             }
 
             if (parts[0] === "join" && parts[1] !== undefined) {
@@ -210,6 +228,18 @@ export function createHandler(options: HttpOptions) {
             // The web app: index.html for app routes, files from web/ otherwise. Who is signed in, and this
             // server's build, go in the page (`serveApp`): the tab checks a session the device kept before `/api/me`.
             if (parts.length === 0 || parts[0] === "s") {
+                const user = auth.user(request);
+
+                if (user === undefined) {
+                    const isHome = url.pathname === "/" || url.pathname === "/index.html";
+                    const next = isHome ? "" : `?next=${encodeURIComponent(url.pathname + url.search)}`;
+
+                    response.writeHead(302, { location: `/login${next}` });
+                    response.end();
+
+                    return;
+                }
+
                 return serveApp(
                     response,
                     iconAddress(request, app.dataDir),
@@ -224,6 +254,18 @@ export function createHandler(options: HttpOptions) {
             }
 
             if (file === join(WEB, "index.html")) {
+                const user = auth.user(request);
+
+                if (user === undefined) {
+                    const isHome = url.pathname === "/" || url.pathname === "/index.html";
+                    const next = isHome ? "" : `?next=${encodeURIComponent(url.pathname + url.search)}`;
+
+                    response.writeHead(302, { location: `/login${next}` });
+                    response.end();
+
+                    return;
+                }
+
                 return serveApp(
                     response,
                     iconAddress(request, app.dataDir),

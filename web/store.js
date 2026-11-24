@@ -2536,6 +2536,11 @@ export async function start() {
 
         if (error.status === 401) {
             personStorage.clear();
+            const next = window.location.pathname === "/" ? "" : `?next=${encodeURIComponent(window.location.pathname + window.location.search)}`;
+
+            window.location.href = `/login${next}`;
+
+            return;
         }
 
         store.set({ me: error.status === 401 ? null : undefined });
