@@ -1304,6 +1304,9 @@ store.subscribe((state) => {
 document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") {
         saveShown();
+    } else if (source?.silent?.(1.5)) {
+        // Back from the background: a stream that missed its ping died there, though it never said so.
+        connect();
     }
 });
 
@@ -2195,6 +2198,9 @@ addEventListener("pageshow", (event) => {
     }
 });
 
+/** The server pings every 15 s; remember what it said when it pinged, or assume 15 s. */
+let pingPeriod = 15_000;
+
 /** Server-sent events: one long response the server writes to as things change. */
 function streamEvents(query) {
     const generation = accountGeneration;
@@ -2206,11 +2212,19 @@ function streamEvents(query) {
     /** The first batch arrived whole: the session's view, or the session list when no session is open. */
     let settled = false;
     const settles = named !== null ? ["view", "missing"] : ["sessions"];
+    /** When this stream last said anything, and how often the server pings it: unknown until a first ping. */
+    let heardAt = Date.now();
+    let pingMs = pingPeriod;
+    let pings = 0;
+    let watchdog;
     const connection = {
         close() {
             clearTimeout(fallback);
+            clearInterval(watchdog);
             events.close();
         },
+        /** No error comes when a stream goes half-open or the phone suspended the page: only a missed ping shows it. */
+        silent: (missed) => pingMs > 0 && Date.now() - heardAt > pingMs * missed,
     };
     // Some tunnels hold the stream back. A Cloudflare quick tunnel passes it on in 64 KiB blocks and keeps the rest, so
     // a long session's first view can stop partway after its small first events got through. The stream counts as
@@ -2226,8 +2240,44 @@ function streamEvents(query) {
               connect();
           }, 6000);
 
+    const watch = () => {
+        watchdog = setInterval(() => {
+            if (source === connection && connection.silent(2.5)) {
+                // A whole first batch, then no ping after the first: the path holds small events back (a tunnel, an
+                // older server), so a new stream would go quiet too. Poll instead, as the first-batch fallback does.
+                if (!local && settled && pings <= 1) {
+                    localStorage.setItem(TRANSPORT_KEY, `poll:${Date.now()}`);
+                }
+
+                connect();
+            }
+        }, pingMs);
+    };
+
+    if (pingMs > 0) {
+        watch();
+    }
+
+    events.addEventListener("ping", (event) => {
+        const said = JSON.parse(event.data);
+
+        if (typeof said?.every === "number") {
+            pingPeriod = said.every;
+        }
+
+        if (pingMs === 0) {
+            pingMs = pingPeriod;
+            watch();
+        }
+
+        pings++;
+        heardAt = Date.now();
+    });
+
     for (const [name, handler] of Object.entries(handlers)) {
         events.addEventListener(name, (event) => {
+            heardAt = Date.now();
+
             if (source !== connection) {
                 return;
             }

@@ -176,7 +176,13 @@ export function createEventStreams(app: PocketApp) {
         });
         write("retry: 1500\n\n");
         // The ping checks too: a tab far behind with nothing new for it would otherwise hold its backlog until the next event.
-        const ping = setInterval(() => keepsUp() && write(": ping\n\n"), eventTiming.pingMs);
+        // It writes both a comment (for intermediary proxies) and a named event (so the tab sees it and detects dead streams).
+        const ping = setInterval(
+            () =>
+                keepsUp() &&
+                write(`: ping\n\nevent: ping\ndata: {"every":${eventTiming.pingMs}}\n\n`),
+            eventTiming.pingMs,
+        );
 
         request.on("close", () => {
             clearInterval(ping);
