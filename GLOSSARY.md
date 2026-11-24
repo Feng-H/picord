@@ -45,3 +45,21 @@ _Avoid_: Ping timer, keepalive checker, health loop.
 **Session Switch**:
 An in-band control operation allowing an established connection to switch active session context without terminating or re-establishing the underlying HTTP transport.
 _Avoid_: Reconnect, channel jump, session reload.
+
+## History Search
+
+**History Search Engine**:
+The decoupled server subsystem responsible for scanning, filtering, and excerpting transcript messages across sessions and channels.
+_Avoid_: Full-text database, grep worker, log scanner.
+
+**Search Scope**:
+The target partition of conversations queried during a search, supporting `"current"`, `"all"`, `"#channel-name"`, `"channels"`, `"chats"`, or numeric conversation IDs.
+_Avoid_: Query filter, session category, target range.
+
+**Incremental Entry Cache**:
+An in-memory index caching parsed entry words up to a recorded `lastIndexedEntryId`, querying only newly committed entries on subsequent searches.
+_Avoid_: Shadow database, message cache, dump buffer.
+
+**Transcript Excerpt**:
+A trimmed text snippet surrounding a matched search keyword, displaying relative timestamps, stable entry IDs, and originating channel labels.
+_Avoid_: Log line, match snippet, summary clip.

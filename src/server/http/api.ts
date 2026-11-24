@@ -195,6 +195,29 @@ export function createApi(options: HttpOptions, auth: Auth) {
             return sttRoute(route);
         }
 
+        // Global transcript search across channels and sessions.
+        if (first === "search" && second === undefined && method === "GET") {
+            const q = url.searchParams.get("q") ?? url.searchParams.get("query") ?? "";
+            const scope = url.searchParams.get("scope") ?? undefined;
+            const limit = url.searchParams.has("limit")
+                ? Number(url.searchParams.get("limit"))
+                : undefined;
+            const session = url.searchParams.has("session")
+                ? Number(url.searchParams.get("session"))
+                : 0;
+
+            const result = await app.historySearch.search(session, q, scope, limit);
+            const filteredMatches = result.matches.filter((m) =>
+                app.canSee(user, conversationId(String(m.sessionId))),
+            );
+
+            return json(response, 200, {
+                ...result,
+                matches: filteredMatches,
+                totalMatches: filteredMatches.length,
+            });
+        }
+
         // A picture of anyone this person may see in the people list.
         if (first === "avatar" && second !== undefined && method === "GET") {
             const picture = app.people(user).some((each) => each.id === second)
