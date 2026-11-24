@@ -4229,7 +4229,9 @@ export function Transcript() {
                 entries.length === 0 &&
                 !view.live.busy &&
                 html`<div class="empty hint">
-                    <div class="pi">π</div>
+                    <div class="pi">
+                        <img src="/icon.svg" width="56" height="56" alt="Picord" style="border-radius: 14px; opacity: 0.85; display: block; margin: 0 auto;" />
+                    </div>
                     <p>
                         ${conversation.kind === "subagent" ? "This subagent has no messages yet." : "Ask anything. Pi works in this session's folder, and keeps working if the server restarts."}
                     </p>

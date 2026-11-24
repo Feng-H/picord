@@ -1390,7 +1390,9 @@ export function Boot({ caption = "starting", detail = "", inline = false }) {
         role="status"
         aria-live="polite"
     >
-        <div class="boot-mark" data-part="brand-mark" aria-hidden="true">π</div>
+        <div class="boot-mark" data-part="brand-mark" aria-hidden="true">
+            <img src="/icon.svg" width="64" height="64" alt="Picord" style="border-radius: 16px; display: block;" />
+        </div>
         <div class="boot-bar" aria-hidden="true"><span></span></div>
         <div class="boot-caption">${caption}</div>
         ${detail && html`<div class="boot-detail">${detail}</div>`}

@@ -2879,9 +2879,11 @@ function Rail({ foldable = false, folded = false }) {
                     aria-label=${t("Home")}
                     onClick=${toSessions}
                 >
-                    π
+                    <img src="/icon.svg" width="24" height="24" alt="Home" style="border-radius: 6px; display: block;" />
                 </button>`
-                : html`<span class="rail-brand" data-part="brand-mark" aria-hidden="true">π</span>`
+                : html`<span class="rail-brand" data-part="brand-mark" aria-hidden="true">
+                    <img src="/icon.svg" width="24" height="24" alt="Picord" style="border-radius: 6px; display: block;" />
+                </span>`
         }
         <span class="rail-gap"></span>
         ${
