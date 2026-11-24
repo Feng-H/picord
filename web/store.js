@@ -1,4 +1,5 @@
 // App state, the server connection, and API calls. Components read `store.state` and re-render on `store.subscribe`.
+import { EventConnection } from "./connection.js";
 import { onRoute, popRoute, pushRoute, routeState, routeUnder } from "./back.js";
 import { hostCan, onPageVisibility, pageVisible } from "./host.js";
 import { sessionForest, unfolded } from "./session-tree.js";
@@ -1324,9 +1325,8 @@ store.subscribe((state) => {
 document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") {
         saveShown();
-    } else if (source?.silent?.(1.5)) {
-        // Back from the background: a stream that missed its ping died there, though it never said so.
-        connect();
+    } else {
+        source?.wake();
     }
 });
 
@@ -2058,36 +2058,11 @@ const handlers = {
  * whose code names none (as a tab asleep through an update keeps) the queue too.
  */
 const PROTOCOL = 6;
-const TRANSPORT_KEY = "pocket.transport";
 const local = /^(localhost|127\.\d+\.\d+\.\d+|\[::1\])$/.test(location.hostname);
-/** After an event stream stalls on this address, poll for a day, then try the stream again: one slow start is not forever. */
-const POLL_FOR_MS = 24 * 60 * 60_000;
-
-const pollHere = () => {
-    const saved = localStorage.getItem(TRANSPORT_KEY) ?? "";
-
-    // Saved before the choice had a time: a choice made now.
-    if (saved === "poll") {
-        localStorage.setItem(TRANSPORT_KEY, `poll:${Date.now()}`);
-    }
-
-    const [mode, at] = (localStorage.getItem(TRANSPORT_KEY) ?? "").split(":");
-
-    return mode === "poll" && Date.now() - Number(at) < POLL_FOR_MS;
-};
-
-/** Event stream reconnects in a row that the browser gave up on, for the pause before the next one. */
-let streamRetries = 0;
-
-const connected = () => store.state.connection !== "open" && store.set({ connection: "open" });
 
 export function connect() {
-    source?.close();
-    // A new connection names the session itself: a switch still on its way is no longer awaited.
-    switching = null;
-    switchSeq++;
-    store.set({ connection: "connecting" });
-    source = pollHere() && !local ? pollEvents() : streamEvents(eventsQuery(true));
+    helloAsked = moment();
+    source?.connect();
 }
 
 /**
@@ -2202,8 +2177,7 @@ async function restoreAccount() {
 // A frozen page must not hold an event stream or show its old account on return. Checking the cookie keeps a
 // same-person restore intact, including uploads still held only in memory.
 addEventListener("pagehide", (event) => {
-    source?.close();
-    source = null;
+    source?.disconnect();
     clearTimeout(accountRetry);
     accountRequest?.abort();
     accountRequest = null;
@@ -2218,307 +2192,62 @@ addEventListener("pageshow", (event) => {
     }
 });
 
-/** The server pings every 15 s; remember what it said when it pinged, or assume 15 s. */
-let pingPeriod = 15_000;
+function show() {
+    const id = store.state.conversationId;
+    const have = id === null ? null : haveOf(store.state.view);
 
-/** Server-sent events: one long response the server writes to as things change. */
-function streamEvents(query) {
-    const generation = accountGeneration;
+    source?.switchSession(id, have);
+}
 
-    helloAsked = moment();
-    const events = new EventSource(`/api/events?${query}`);
-    /** The session its address names: a retry by the browser asks for that one again. */
-    const named = store.state.conversationId;
-    /** The first batch arrived whole: the session's view, or the session list when no session is open. */
-    let settled = false;
-    const settles = named !== null ? ["view", "missing"] : ["sessions"];
-    /** When this stream last said anything, and how often the server pings it: unknown until a first ping. */
-    let heardAt = Date.now();
-    let pingMs = pingPeriod;
-    let pings = 0;
-    let watchdog;
-    const connection = {
-        close() {
-            clearTimeout(fallback);
-            clearInterval(watchdog);
-            events.close();
-        },
-        /** No error comes when a stream goes half-open or the phone suspended the page: only a missed ping shows it. */
-        silent: (missed) => pingMs > 0 && Date.now() - heardAt > pingMs * missed,
-    };
-    // Some tunnels hold the stream back. A Cloudflare quick tunnel passes it on in 64 KiB blocks and keeps the rest, so
-    // a long session's first view can stop partway after its small first events got through. The stream counts as
-    // working only once that first batch is whole; otherwise poll instead, and remember that for this address.
-    const fallback = local
-        ? undefined
-        : setTimeout(() => {
-              if (settled || source !== connection) {
-                  return;
-              }
+source = new EventConnection({
+    url: (_conn, mode) =>
+        mode === "poll" ? eventsQuery(true) : `/api/events?${eventsQuery(true)}`,
+    isLocal: () => local,
+    switchApi: async ({ c, have, seq }) => {
+        const connection = store.state.streamId;
 
-              localStorage.setItem(TRANSPORT_KEY, `poll:${Date.now()}`);
-              connect();
-          }, 6000);
-
-    const watch = () => {
-        watchdog = setInterval(() => {
-            if (source === connection && connection.silent(2.5)) {
-                // A whole first batch, then no ping after the first: the path holds small events back (a tunnel, an
-                // older server), so a new stream would go quiet too. Poll instead, as the first-batch fallback does.
-                if (!local && settled && pings <= 1) {
-                    localStorage.setItem(TRANSPORT_KEY, `poll:${Date.now()}`);
-                }
-
-                connect();
-            }
-        }, pingMs);
-    };
-
-    if (pingMs > 0) {
-        watch();
-    }
-
-    events.addEventListener("ping", (event) => {
-        const said = JSON.parse(event.data);
-
-        if (typeof said?.every === "number") {
-            pingPeriod = said.every;
+        if (store.state.server?.switches !== true || !connection) {
+            throw new Error("In-band switch unavailable");
         }
 
-        if (pingMs === 0) {
-            pingMs = pingPeriod;
-            watch();
-        }
-
-        pings++;
-        heardAt = Date.now();
-    });
-
-    for (const [name, handler] of Object.entries(handlers)) {
-        events.addEventListener(name, (event) => {
-            heardAt = Date.now();
-
-            if (source !== connection) {
-                return;
-            }
-
-            if (settles.includes(name)) {
-                settled = true;
-            }
-
-            heard(name, JSON.parse(event.data), handler, generation);
+        await api("switch", {
+            connection,
+            c,
+            have,
+            seq,
         });
-    }
-
-    events.onopen = () => {
-        if (source !== connection) {
-            return;
-        }
-
-        streamRetries = 0;
-        connected();
-    };
-
-    events.onerror = async () => {
-        if (source !== connection) {
-            return;
-        }
-
-        store.set({ connection: "closed" });
-
-        // Switched on this connection since it opened (`show`): the browser's retry would ask for the session its address
-        // names. A new connection names the one shown; it hears a 401 as this one does.
-        if (named !== store.state.conversationId) {
-            connect();
-
-            return;
-        }
-
-        // EventSource retries by itself after a network error; a 401 needs a sign-in instead.
+    },
+    checkAuth: async () => {
         try {
             await api("me");
+
+            return true;
         } catch (error) {
             if (error.status === 401) {
-                connection.close();
-                store.set({ me: null });
-
-                return;
+                return false;
             }
+
+            return true;
+        }
+    },
+    onEvent: (name, data) => {
+        if (changingAccount) {
+            return;
         }
 
-        // It gives up for good when a retry gets an answer other than 200, such as a tunnel's 502 while the server
-        // restarts. Start a new stream after a pause that grows with each try.
-        if (events.readyState === EventSource.CLOSED && source === connection) {
-            // A stream that failed was not held back: no reason to switch this address to polling.
-            clearTimeout(fallback);
-            streamRetries++;
-            setTimeout(
-                () => source === connection && connect(),
-                Math.min(10_000, 1000 * streamRetries),
-            );
+        const handler = handlers[name];
+
+        if (handler) {
+            handler(data, accountGeneration);
         }
-    };
-
-    return connection;
-}
-
-// ─── Switching sessions on the connection the tab has ─────────────────────────────────────────────────────────────
-
-/** Events about the session a tab shows: while a switch is on its way, those that come are the old session's. */
-const SESSION_EVENTS = new Set(["view", "chat", "notes", "presence", "browser", "missing"]);
-/** The number of the last switch asked, so the server drops one that arrives after a newer one. */
-let switchSeq = 0;
-/** The switch on its way: its number, until the server's `switched` says it went through. */
-let switching = null;
-
-/** Pass an event on to its handler, unless it is about the session the tab is leaving. */
-function heard(name, data, handler, generation) {
-    if (changingAccount || (switching !== null && SESSION_EVENTS.has(name))) {
-        return;
-    }
-
-    handler(data, generation);
-}
-
-/**
- * Show the session the tab now shows (`conversationId`, null for the list) on the connection it has, rather than a new
- * one: no hello, list, or PiP state comes again, and nobody sees this person leave and come back. A server that cannot
- * (an older one, or no connection open) gets a new connection, as before.
- */
-function show() {
-    const connection = store.state.streamId;
-
-    if (
-        store.state.server?.switches !== true ||
-        !connection ||
-        !source ||
-        store.state.connection !== "open"
-    ) {
-        connect();
-
-        return;
-    }
-
-    const id = store.state.conversationId;
-    const seq = ++switchSeq;
-
-    switching = seq;
-    api("switch", {
-        connection,
-        c: id,
-        have: id === null ? null : haveOf(store.state.view),
-        seq,
-    }).catch(() => {
-        // The connection closed, or the server started again: a new one, which names the session.
-        if (switchSeq === seq) {
-            connect();
-        }
-    });
-}
-
-/** Long polling: each request waits for events and returns them; the next one acknowledges what arrived. */
-function pollEvents() {
-    let session = null;
-    let ack = 0;
-    let stopped = false;
-    let request = null;
-    const connection = {
-        close() {
-            stopped = true;
-            request?.abort();
-
-            if (session) {
-                fetch(`/api/poll?session=${session}&close=1`, { keepalive: true }).catch(() => {});
-            }
-        },
-    };
-
-    (async () => {
-        let failures = 0;
-
-        while (!stopped) {
-            request = new AbortController();
-            const asked = moment();
-            const named = store.state.conversationId;
-            let fresh = false;
-            const generation = accountGeneration;
-
-            try {
-                // A poll the server no longer knows (it started again, or this tab fell far behind) attaches afresh: it
-                // names the session shown now, which a switch may have changed (`show`).
-                const response = await fetch(
-                    `/api/poll?${eventsQuery(session === null)}${session ? `&session=${session}&ack=${ack}` : ""}`,
-                    { signal: request.signal, cache: "no-store" },
-                );
-
-                if (response.status === 401) {
-                    stopped = true;
-                    store.set({ me: null });
-
-                    return;
-                }
-
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}`);
-                }
-
-                const data = await response.json();
-
-                if (stopped || source !== connection) {
-                    return;
-                }
-
-                if (data.session !== session) {
-                    // A new session (first poll, or the server restarted): it starts with hello and a full view. The
-                    // server made that session, and read the hello's clock, after this request went out.
-                    session = data.session;
-                    ack = 0;
-                    helloAsked = asked;
-                    // It named the session shown when it was asked: a switch still on its way went to the old one.
-                    switching = null;
-                    switchSeq++;
-                    fresh = true;
-                }
-
-                failures = 0;
-                connected();
-
-                for (const item of data.events) {
-                    if (item.seq <= ack) {
-                        continue;
-                    }
-
-                    ack = item.seq;
-
-                    if (handlers[item.event]) {
-                        heard(item.event, item.data, handlers[item.event], generation);
-                    }
-                }
-
-                // The tab switched while it was asked: the new session shows the old one, so switch it too.
-                if (fresh && named !== store.state.conversationId) {
-                    show();
-                }
-            } catch {
-                if (stopped) {
-                    return;
-                }
-
-                failures++;
-
-                if (store.state.connection === "open") {
-                    store.set({ connection: "closed" });
-                }
-
-                await new Promise((resolve) =>
-                    setTimeout(resolve, Math.min(10_000, 1000 * failures)),
-                );
-            }
-        }
-    })();
-
-    return connection;
-}
+    },
+    onStatusChange: (status) => {
+        store.set({ connection: status });
+    },
+    onAuthRequired: () => {
+        store.set({ me: null });
+    },
+});
 
 /** Sign-ins that ended, or whose dialog was closed here: what the server still says about them shows nothing. */
 const endedSignIns = new Set();
