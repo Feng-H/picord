@@ -98,4 +98,22 @@ _Avoid_: MD5 hash, raw token, plain password.
 
 **Picord Brand Icon**:
 The bespoke visual symbol featuring a faceted, high-tech "P" glyph with channel grid elements, replacing the upstream `π` character across SVG and PWA assets.
+
+## Conversation Rule Engine
+
+**Conversation Rule Engine**:
+The deterministic server subsystem responsible for loading declarative triggers, monitoring channel activity, evaluating silence thresholds, and dispatching automated tasks to agents.
+_Avoid_: Cron manager, schedule bot, task runner.
+
+**Silence Trigger**:
+A condition specifying that an action fires only after a channel has maintained zero user activity for a defined duration (`afterDuration`), automatically resetting upon any new user message.
+_Avoid_: Countdown timer, delayed task, debounce schedule.
+
+**Incremental Entry Cursor**:
+A durable, monotonically increasing SQLite `entry_id` marker recording the boundary of messages already processed by a rule, preventing duplicate evaluation across restarts and triggers.
+_Avoid_: Message offset, checkpoint, read pointer.
+
+**Rule Action Pipeline**:
+A deterministic sequence of steps initiated when a trigger fires, injecting an actionable instruction turn into the source channel and optionally piping results to target channels.
+_Avoid_: Task flow, macro, webhook hook.
 _Avoid_: Pi icon, math logo, default favicon.
