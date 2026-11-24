@@ -19,7 +19,7 @@ function localPath(next: string | null): string {
 }
 
 function page(title: string, body: string): string {
-    return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="dark"><title>${escapeHtml(title)}</title><link rel="stylesheet" href="/style.css"></head><body class="plain-page"><main class="plain">${body}</main></body></html>`;
+    return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="dark"><title>${escapeHtml(title)}</title><link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" href="/icon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="stylesheet" href="/style.css"></head><body class="plain-page"><main class="plain">${body}</main></body></html>`;
 }
 
 function renderLoginPage(options: {
@@ -35,8 +35,8 @@ function renderLoginPage(options: {
 
     return page(
         "Sign In · Picord",
-        `<div style="display: flex; flex-direction: column; align-items: center; gap: 8px; margin-bottom: 8px;">
-            <div style="width: 48px; height: 48px; border-radius: 12px; background: linear-gradient(135deg, rgba(34, 197, 94, 0.2), rgba(6, 182, 212, 0.2)); border: 1px solid rgba(34, 197, 94, 0.3); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 24px; color: #4ade80;">P</div>
+        `<div style="display: flex; flex-direction: column; align-items: center; gap: 12px; margin-bottom: 12px;">
+            <img src="/icon.svg" width="56" height="56" alt="Picord" style="border-radius: 14px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4); display: block;">
             <h1 style="margin: 0;">Picord</h1>
             <p style="margin: 0; color: var(--muted); font-size: 0.95rem;">Sign in to your account</p>
         </div>
@@ -83,8 +83,8 @@ function renderRegisterPage(options: {
 
     return page(
         "Register · Picord",
-        `<div style="display: flex; flex-direction: column; align-items: center; gap: 8px; margin-bottom: 8px;">
-            <div style="width: 48px; height: 48px; border-radius: 12px; background: linear-gradient(135deg, rgba(34, 197, 94, 0.2), rgba(6, 182, 212, 0.2)); border: 1px solid rgba(34, 197, 94, 0.3); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 24px; color: #4ade80;">P</div>
+        `<div style="display: flex; flex-direction: column; align-items: center; gap: 12px; margin-bottom: 12px;">
+            <img src="/icon.svg" width="56" height="56" alt="Picord" style="border-radius: 14px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4); display: block;">
             <h1 style="margin: 0;">Join Picord</h1>
             <p style="margin: 0; color: var(--muted); font-size: 0.95rem;">Create your account with an invite code</p>
         </div>

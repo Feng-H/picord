@@ -36,8 +36,8 @@ export function SignIn() {
     };
 
     return html`<div class="signin" data-part="sign-in">
-        <div class="pi big">π</div>
-        <h1>Pi Pocket</h1>
+        <img src="/icon.svg" width="72" height="72" alt="Picord" class="signin-icon" style="border-radius: 18px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4); margin-bottom: 8px;" />
+        <h1>Picord</h1>
         <p class="muted">
             Open the sign-in link Pi Pocket printed when it started, or an invite from a signed-in device. You can also paste the link, the token, or an invite code here.
         </p>

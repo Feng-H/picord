@@ -77,6 +77,13 @@ test("unauthenticated GET /web/icon.svg is accessible as public asset", async ()
     assert.equal(res.status, 200);
 });
 
+test("GET /favicon.ico serves the icon resource with image/x-icon", async () => {
+    const res = await fetch(`${base}/favicon.ico`, { redirect: "manual" });
+
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get("content-type"), "image/x-icon");
+});
+
 test("authenticated GET / serves the application with 200", async () => {
     const res = await fetch(`${base}/`, {
         headers: { cookie: validAuthCookie },
