@@ -512,8 +512,8 @@ function App() {
 
     useEffect(() => {
         document.title = state.view.conversation?.title
-            ? `${state.view.conversation.title} · Pi Pocket`
-            : "Pi Pocket";
+            ? `${state.view.conversation.title} · Picord`
+            : "Picord";
     }, [state.view.conversation?.title]);
 
     // A checked device view can draw before `/api/me`; with no copy, keep the usual boot screen.

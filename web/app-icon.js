@@ -79,7 +79,9 @@ const cookieValue = (vars) =>
         .join(".");
 
 function setLink(rel, href, type) {
-    let link = document.querySelector(`link[rel="${rel}"]`);
+    let link = document.querySelector(
+        type ? `link[rel="${rel}"][type="${type}"]` : `link[rel="${rel}"]`,
+    );
 
     if (!link) {
         link = document.createElement("link");
@@ -91,6 +93,7 @@ function setLink(rel, href, type) {
         link.type = type;
     }
 
+    link.removeAttribute("sizes");
     link.href = href;
 }
 

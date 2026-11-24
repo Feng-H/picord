@@ -8,14 +8,14 @@ import { lookLabel, prefs } from "./theme.js";
 import { html, Icon, Keys, shortPath, timeAgo } from "./ui.js";
 
 const LOGO = [
-    "▗▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▖",
-    "▝▀▀▀▜██▀▀▀▀▀▀██▛▀▀▀▘",
-    "    ▐██      ██▌   ",
-    "    ▐██      ██▌   ",
-    "    ▐██      ██▌   ",
-    "    ▐██      ██▌   ",
-    "   ▗██▘      ▝██▄▖ ",
-    "  ▝▀▀          ▀▀▀▘",
+    "  ▗▄▄▖            ▗▄▄▖  ",
+    " ▗████▄▄▄▄▄▄▄▄▄▄▄▄████▖ ",
+    " ▐████████████████████▌ ",
+    " ▐█ ▀█ ▝▀██████▀▘ █▀ █▌ ",
+    " ▐█    ▐██    ██▌    █▌ ",
+    " ▐██▄  ▐██    ██▌▄ ▄██▌ ",
+    "  ▀██▄ ▐██    ██▌ ▄██▀  ",
+    "   ▝▀▀ ▀▀▀    ▀▀▀ ▀▀▘   ",
 ].join("\n");
 
 /** The home screen on wide screens: what fastfetch shows for a machine, for this Pi Pocket. */
@@ -110,9 +110,7 @@ export function Splash() {
             <${Icon} name="more" />
         </button>
         <div class="fetch" data-part="home-facts">
-            <div class="fetch-logo" data-part="home-logo" aria-hidden="true">
-                <img src="/icon.svg" width="128" height="128" alt="Picord" style="border-radius: 28px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35); display: block;" />
-            </div>
+            <pre class="fetch-logo" data-part="home-logo" aria-hidden="true">${LOGO}</pre>
             <div class="fetch-info">
                 <div class="fetch-title" data-part="home-title" style=${`--i:${line++}`}>
                     <b>${(me?.name ?? "you").toLowerCase().replace(/\s+/g, "-")}</b>@<b>picord</b>
