@@ -147,7 +147,11 @@ import {
     loadDefaultRules,
     formatRulePrompt,
     appendSummarizedMarker,
+    watchRuleFiles,
+    formatRuleStatus,
+    formatRuleList,
     type DispatchedTask,
+    type ConversationRule,
 } from "./rule-engine/index.ts";
 import { entryWords } from "./history-search.ts";
 import { CoreSecrets } from "./secrets.ts";
@@ -458,6 +462,7 @@ export class PocketApp {
     /** Conversation rule engine: deterministic silence triggers and automation. */
     readonly ruleEngine: ConversationRuleEngine;
     #ruleTickTimer: NodeJS.Timeout | undefined;
+    #ruleWatcherCleaner: (() => void) | undefined;
     /** Each person's favorite working folders, shared by their devices. */
     readonly folderFavorites = new FolderFavorites(this);
     /** Artifacts published to anyone with their address (`share.ts`), which needs no sign-in. */
@@ -849,6 +854,21 @@ export class PocketApp {
             });
         }, 60_000);
         this.#ruleTickTimer.unref();
+
+        const candidateRulePaths = [
+            join(process.cwd(), ".dialogue-session", "rules.json"),
+            join(this.dataDir, "rules.json"),
+        ];
+
+        this.#ruleWatcherCleaner = watchRuleFiles(candidateRulePaths, (file) => {
+            try {
+                const res = this.reloadRules();
+
+                this.#log(`rule-engine: hot reloaded ${String(res.count)} rules from ${file}`);
+            } catch (err: unknown) {
+                this.#log(`rule-engine: failed to hot reload rules from ${file}: ${String(err)}`);
+            }
+        });
     }
 
     /**
@@ -4500,6 +4520,11 @@ export class PocketApp {
                 this.#ruleTickTimer = undefined;
             }
 
+            if (this.#ruleWatcherCleaner) {
+                this.#ruleWatcherCleaner();
+                this.#ruleWatcherCleaner = undefined;
+            }
+
             this.alerts.close();
             this.themes.close();
             await this.cacheKeeper.close();
@@ -4668,6 +4693,46 @@ export class PocketApp {
                     }
                 }
             }
+        }
+    }
+
+    /**
+     * Reload conversation rules from disk into the runtime engine.
+     */
+    reloadRules(): { count: number; rules: ConversationRule[] } {
+        const rules = loadDefaultRules(this.dataDir, process.cwd());
+
+        this.ruleEngine.reloadRules(rules);
+
+        return { count: rules.length, rules };
+    }
+
+    /**
+     * Execute in-conversation /rule commands: list, status, reload, and help.
+     */
+    executeRuleCommand(typed: string): string {
+        const parts = typed.trim().split(/\s+/);
+        const sub = (parts[1] ?? "").toLowerCase();
+
+        switch (sub) {
+            case "list":
+                return formatRuleList(this.ruleEngine.rules);
+            case "status":
+                return formatRuleStatus(this.ruleEngine);
+
+            case "reload": {
+                const res = this.reloadRules();
+
+                return `✅ **规则热重载成功**，已载入 ${String(res.count)} 条规则：\n${res.rules.map((r) => `- \`${r.id}\` (#${r.channel})`).join("\n")}`;
+            }
+
+            default:
+                return [
+                    "🤖 **对话规则引擎指令 (/rule)**",
+                    "- `/rule list`: 列出当前已配置生效的所有规则",
+                    "- `/rule status`: 查看当前频道的倒计时、增量游标与心跳状态",
+                    "- `/rule reload`: 立即从磁盘重新加载规则配置文件",
+                ].join("\n");
         }
     }
 }

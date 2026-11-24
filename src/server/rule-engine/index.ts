@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, watch, type FSWatcher } from "node:fs";
 import { join } from "node:path";
 
 /**
@@ -155,6 +155,113 @@ export function formatRulePrompt(
     return lines.join("\n");
 }
 
+/**
+ * Watch rule files on disk and trigger reload when modified.
+ */
+export function watchRuleFiles(
+    paths: string[],
+    onReload: (file: string) => void,
+): () => void {
+    const watchers: FSWatcher[] = [];
+    let debounceTimer: NodeJS.Timeout | undefined;
+
+    for (const filePath of paths) {
+        if (existsSync(filePath)) {
+            try {
+                const watcher = watch(filePath, () => {
+                    clearTimeout(debounceTimer);
+                    debounceTimer = setTimeout(() => {
+                        try {
+                            onReload(filePath);
+                        } catch {}
+                    }, 200);
+                    debounceTimer.unref();
+                });
+
+                watchers.push(watcher);
+            } catch {}
+        }
+    }
+
+    return () => {
+        clearTimeout(debounceTimer);
+
+        for (const w of watchers) {
+            try {
+                w.close();
+            } catch {}
+        }
+    };
+}
+
+/**
+ * Format active rule status for human consumption (/rule status).
+ */
+export function formatRuleStatus(engine: ConversationRuleEngine, now = Date.now()): string {
+    const rules = engine.rules;
+
+    if (rules.length === 0) {
+        return "当前未加载任何对话规则。";
+    }
+
+    const sections = rules.map((rule) => {
+        const state = engine.getState(rule.id);
+        const afterMs = parseDuration(rule.after);
+        let countdownStr = "等待初次发言";
+
+        if (state?.lastActivity) {
+            const remainingMs = Math.max(0, state.lastActivity + afterMs - now);
+            const remainingMin = Math.round(remainingMs / 60000);
+            const remainingSec = Math.round(remainingMs / 1000);
+
+            countdownStr =
+                remainingMs > 0
+                    ? `剩余约 ${remainingMin} 分钟 (${remainingSec} 秒)`
+                    : "已到期（待心跳触发）";
+        }
+
+        const lastActiveStr = state?.lastActivity
+            ? new Date(state.lastActivity).toLocaleTimeString("sv")
+            : "无";
+        const lastFiredStr = state?.lastFiredAt
+            ? new Date(state.lastFiredAt).toLocaleTimeString("sv")
+            : "未触发";
+
+        return [
+            `- **${rule.title || rule.id}** (\`#${rule.channel}\`):`,
+            `  - 倒计时: ${countdownStr}`,
+            `  - 增量游标: cursor_entry_id = ${String(state?.cursorEntryId ?? 0)}, head_entry_id = ${String(state?.headEntryId ?? 0)}`,
+            `  - 最近发言: ${lastActiveStr} | 最近触发: ${lastFiredStr}`,
+            rule.action.forwardToChannel
+                ? `  - 跨频道转发: #${rule.action.forwardToChannel.replace(/^#/, "")}`
+                : undefined,
+        ]
+            .filter(Boolean)
+            .join("\n");
+    });
+
+    return `⏱️ **对话规则引擎运行时状态 (${rules.length}条生效)**:\n\n${sections.join("\n\n")}`;
+}
+
+/**
+ * Format loaded rules list (/rule list).
+ */
+export function formatRuleList(rules: readonly ConversationRule[]): string {
+    if (rules.length === 0) {
+        return "当前未配置任何规则。";
+    }
+
+    const items = rules.map((r) => {
+        const target = r.action.forwardToChannel
+            ? ` -> 转发至 \`#${r.action.forwardToChannel.replace(/^#/, "")}\``
+            : "";
+
+        return `- **${r.title || r.id}** (\`${r.id}\`): 频道 \`#${r.channel}\`, 静默满 \`${r.after}\` 触发${target}`;
+    });
+
+    return `📋 **当前生效的对话规则列表 (${rules.length}条)**:\n\n${items.join("\n")}`;
+}
+
 export interface RuleEngineStore {
     loadRules?(): Promise<ConversationRule[]> | ConversationRule[];
     getState(ruleId: string): RuleRuntimeState | undefined;
@@ -256,7 +363,7 @@ export interface ConversationRuleEngineOptions {
 }
 
 export class ConversationRuleEngine {
-    readonly #rules: ConversationRule[];
+    #rules: ConversationRule[];
     readonly #store: RuleEngineStore;
     readonly #onDispatch?: (task: DispatchedTask) => Promise<void> | void;
     readonly #states = new Map<string, RuleRuntimeState>();
@@ -272,6 +379,27 @@ export class ConversationRuleEngine {
 
             if (persisted) {
                 this.#states.set(rule.id, { ...persisted });
+            }
+        }
+    }
+
+    /**
+     * Reload rules dynamically without losing active state, timers, or cursors.
+     */
+    reloadRules(newRules: ConversationRule[]): void {
+        for (const rule of newRules) {
+            this.#validateRule(rule);
+        }
+
+        this.#rules = [...newRules];
+
+        for (const rule of this.#rules) {
+            if (!this.#states.has(rule.id)) {
+                const persisted = this.#store.getState(rule.id);
+
+                if (persisted) {
+                    this.#states.set(rule.id, { ...persisted });
+                }
             }
         }
     }

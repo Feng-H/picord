@@ -878,6 +878,36 @@ export class Commands {
 
         const conversation = await app.conversation(id);
         const typed = request.text.trim();
+
+        if (typed === "/rule" || typed.startsWith("/rule ")) {
+            const reply = app.executeRuleCommand(typed);
+            const model = [
+                {
+                    role: "user" as const,
+                    content: [{ type: "text" as const, text: `[rule] ${reply}` }],
+                    timestamp: Date.now(),
+                },
+            ];
+
+            await conversation.submit(
+                {
+                    type: "write",
+                    entry: {
+                        kind: NOTE_ENTRY,
+                        data: { text: reply, by: user.id, name: "Rule Engine" },
+                        model,
+                    },
+                    requestId: ownRequest(user.id, `rule-${randomUUID()}`),
+                },
+                context,
+            );
+
+            return {
+                submissionId: `rule-${Date.now()}` as unknown as SubmissionId,
+                requestId: request.requestId ?? randomUUID(),
+            };
+        }
+
         // `/skill:name request` sends the skill with the request; `/name arguments`, Pi's prompt template of that name.
         const expanded = typed.startsWith("/skill:")
             ? (expandSkillCommand(typed, app.skillCommands(id)) ?? typed)
