@@ -55,7 +55,14 @@ import { TrustBar } from "./trust.js";
 import { prefs } from "./theme.js";
 import { fingerprint } from "./text-hash.js";
 import { says } from "./turns.js";
-import { MicButton, VoiceButton, useDictation, useVoiceMessage, voiceLanguage, voiceRecording } from "./voice.js";
+import {
+    MicButton,
+    VoiceButton,
+    useDictation,
+    useVoiceMessage,
+    voiceLanguage,
+    voiceRecording,
+} from "./voice.js";
 import {
     APPLE,
     contextLevel,
@@ -1260,11 +1267,8 @@ export function Composer() {
         !searching && !shell && !inQuote && mention === null ? channelAt(text, caret) : null;
     const channelLive = channelTyped !== null && channelTyped.start !== hiddenChannel;
     const channelChoices = channelLive
-        ? store.state.sessions
-              .filter((each) => each.channel === true)
-              .filter((each) =>
-                  (each.title ?? "").toLowerCase().includes(channelTyped.query.toLowerCase()),
-              )
+        ? store.channels
+              .filter((each) => each.name.includes(channelTyped.query.toLowerCase()))
               .slice(0, 8)
         : [];
     const chosenChannel = channelChoices[Math.min(pick, channelChoices.length - 1)];
@@ -1484,7 +1488,14 @@ export function Composer() {
         }
 
         const ok = await attempt(() =>
-            actions.submit("", [attachment], busy ? sendMode : "followUp", false, record.requestId, voiceLanguage()),
+            actions.submit(
+                "",
+                [attachment],
+                busy ? sendMode : "followUp",
+                false,
+                record.requestId,
+                voiceLanguage(),
+            ),
         );
 
         endSend(conversationId, record, Boolean(ok));
@@ -1512,7 +1523,10 @@ export function Composer() {
             (strips.length > 0 || quoted.length > 0 || quoteIn) &&
             (parsed || shell || template || text.trimStart().startsWith("/skill:"))
         ) {
-            return notify("info", t("A quote cannot go with a command. Remove the quotes to run it."));
+            return notify(
+                "info",
+                t("A quote cannot go with a command. Remove the quotes to run it."),
+            );
         }
 
         // What shows is what goes: words still coming would land in the emptied box.

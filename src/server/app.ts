@@ -104,6 +104,7 @@ import {
 import { type GuardStatus, LancetGuard } from "./lancet.ts";
 import { takeLock } from "./lock.ts";
 import { Memory } from "./memory.ts";
+import { ChannelManager } from "./channels.ts";
 import { isThinkingLevel, modelInfo, modelList, resolveModel, THINKING_LEVELS } from "./models.ts";
 import { Updates } from "./updates.ts";
 import { pocketPackage, pocketVersion } from "./versions.ts";
@@ -483,6 +484,8 @@ export class PocketApp {
     readonly inbox = new Inbox(this);
     /** Lessons Pi keeps across sessions, for a project or everywhere. */
     readonly memory = new Memory(this);
+    /** Channel manager: domain lifecycle and routing for Discord-style channels. */
+    readonly channels: ChannelManager;
     /** Each person's favorite working folders, shared by their devices. */
     readonly folderFavorites = new FolderFavorites(this);
     /** Artifacts published to anyone with their address (`share.ts`), which needs no sign-in. */
@@ -726,6 +729,95 @@ export class PocketApp {
             log: (line) => this.#log(line),
         });
         this.guard.protect = (tool, args, cwd) => this.secrets.blocked(tool, args, cwd);
+        this.channels = new ChannelManager(
+            {
+                list: () => {
+                    return Object.entries(this.#sessions)
+                        .filter(([, meta]) => meta.channel === true)
+                        .map(([id, meta]) => {
+                            const raw = meta.title ?? "";
+                            const name = raw.replace(/^#/, "").trim().toLowerCase();
+
+                            return {
+                                id: Number(id) as unknown as ConversationId,
+                                name,
+                                title: `#${name}`,
+                                createdBy: meta.createdBy ?? "",
+                                cwd: meta.cwd,
+                                archived: meta.archived === true,
+                            };
+                        });
+                },
+                get: (id: ConversationId) => {
+                    const meta = this.sessionMeta(id);
+
+                    if (meta?.channel !== true) {
+                        return undefined;
+                    }
+
+                    const raw = meta.title ?? "";
+                    const name = raw.replace(/^#/, "").trim().toLowerCase();
+
+                    return {
+                        id,
+                        name,
+                        title: `#${name}`,
+                        createdBy: meta.createdBy ?? "",
+                        cwd: meta.cwd,
+                        archived: meta.archived === true,
+                    };
+                },
+                create: async (info) => {
+                    const user = this.config.userById(info.createdBy);
+
+                    if (user === undefined) {
+                        throw new HttpError(403, "Unknown user");
+                    }
+
+                    const created = await this.commands.createSession(user, {
+                        title: `#${info.name}`,
+                        channel: true,
+                        cwd: info.cwd,
+                    });
+
+                    return {
+                        id: created.id,
+                        name: info.name,
+                        title: `#${info.name}`,
+                        createdBy: info.createdBy,
+                        cwd: info.cwd,
+                        archived: false,
+                    };
+                },
+            },
+            async (target, options) => {
+                const user = this.config.userById(
+                    this.sessionMeta(options.fromId)?.createdBy ?? "",
+                );
+
+                if (user === undefined) {
+                    throw new HttpError(403, "The posting conversation's person is gone.");
+                }
+
+                this.requireSee(user, target.id);
+                this.requireSteer(user);
+
+                const sourceTag = options.sourceChannel
+                    ? `via #${options.sourceChannel.name}`
+                    : `via session ${String(options.fromId)}`;
+                const text =
+                    options.sourceChannel && !options.message.startsWith("[via ")
+                        ? `[via #${options.sourceChannel.name}]\n${options.message}`
+                        : options.message;
+
+                await this.commands.submit(
+                    target.id,
+                    user,
+                    { text, requestId: randomUUID() },
+                    `channel #${target.name} (${sourceTag})`,
+                );
+            },
+        );
     }
 
     /**
@@ -3018,10 +3110,7 @@ export class PocketApp {
 
         if (asked === "all") {
             for (const session of this.sessions()) {
-                const marks = [
-                    session.channel ? "channel" : "",
-                    session.archived ? "archived" : "",
-                ]
+                const marks = [session.channel ? "channel" : "", session.archived ? "archived" : ""]
                     .filter(Boolean)
                     .join(", ");
 
@@ -3118,50 +3207,8 @@ export class PocketApp {
      * A message posted into another channel (the channel_post tool): it arrives there as a message from this
      * conversation's person, marked with where it came from, and that channel's Pi reads it and answers there.
      */
-    async postToChannel(
-        fromId: ConversationId,
-        channel: string,
-        message: string,
-    ): Promise<string> {
-        const said = message.trim();
-
-        if (said === "") {
-            throw new HttpError(400, "Say what to post.");
-        }
-
-        const asked = channel.trim().replace(/^#/, "").toLowerCase();
-        const live = this.sessions().filter((session) => session.channel === true);
-        const target =
-            live.find((session) => (session.title ?? "").toLowerCase() === asked) ??
-            live.find((session) => (session.title ?? "").toLowerCase().includes(asked));
-
-        if (target === undefined) {
-            throw new HttpError(404, `No live channel called ${asked} is here.`);
-        }
-
-        const id = Number(target.id) as ConversationId;
-
-        if (id === fromId) {
-            throw new HttpError(400, "That is this very conversation: just say it here.");
-        }
-
-        const user = this.config.userById(this.sessionMeta(fromId)?.createdBy ?? "");
-
-        if (user === undefined) {
-            throw new HttpError(403, "The posting conversation's person is gone.");
-        }
-
-        this.requireSee(user, id);
-        this.requireSteer(user);
-
-        await this.commands.submit(
-            id,
-            user,
-            { text: said, requestId: randomUUID() },
-            `channel #${target.title ?? asked}`,
-        );
-
-        return `Posted into #${target.title ?? asked} (session ${String(target.id)}). Its Pi reads it there and answers in that channel.`;
+    async postToChannel(fromId: ConversationId, channel: string, message: string): Promise<string> {
+        return this.channels.post(fromId, channel, message);
     }
 
     /**

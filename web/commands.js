@@ -191,16 +191,13 @@ async function newChannel(arg) {
     }
 
     // One of a name: an existing channel opens instead of a second one starting.
-    const clash = store.state.sessions.find(
-        (each) =>
-            each.channel === true &&
-            (each.title ?? "").trim().replace(/^#/, "").toLowerCase() === name.toLowerCase(),
-    );
+    const cleanName = name.replace(/^#/, "").trim().toLowerCase();
+    const clash = store.channels.find((each) => each.name === cleanName);
 
     if (clash !== undefined) {
         navigate(clash.id);
 
-        return notify("info", t("#$ is already here; opening it.", name));
+        return notify("info", t("#$ is already here; opening it.", clash.name));
     }
 
     const created = await actions.createSession(agent()?.cwd, {

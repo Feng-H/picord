@@ -152,7 +152,11 @@ export function useDictation(box, onText, { top = false, place = null, onError =
                 const server = store.state.me?.stt === true;
 
                 // A read-only box's words are not to change (a send on its way holds them).
-                if (!element || element.readOnly || (server === false && typeof Recognition !== "function")) {
+                if (
+                    !element ||
+                    element.readOnly ||
+                    (server === false && typeof Recognition !== "function")
+                ) {
                     return;
                 }
 
@@ -307,7 +311,10 @@ export function useDictation(box, onText, { top = false, place = null, onError =
                         const level = event.error === "no-speech" ? "info" : "error";
                         const said = ERRORS[event.error];
 
-                        notify(level, said === undefined ? t("Dictation stopped: $", event.error) : t(said));
+                        notify(
+                            level,
+                            said === undefined ? t("Dictation stopped: $", event.error) : t(said),
+                        );
                     }
                 };
 
@@ -382,7 +389,10 @@ export function useDictation(box, onText, { top = false, place = null, onError =
                         setListening(true);
                     })
                     .catch(() => {
-                        notify("error", "No microphone found, or its use is blocked for this site.");
+                        notify(
+                            "error",
+                            "No microphone found, or its use is blocked for this site.",
+                        );
                     });
             },
 
@@ -545,14 +555,19 @@ export function useVoiceMessage(onRecording) {
                         // The recording goes out: the mic shows it going until it has.
                         setState("sending");
 
-                        Promise.resolve(hear.current(new Blob(chunks, { type: mime.split(";")[0] })))
+                        Promise.resolve(
+                            hear.current(new Blob(chunks, { type: mime.split(";")[0] })),
+                        )
                             .catch(() => {})
                             .finally(() => setState("idle"));
                     } else {
                         setState("idle");
 
                         if (send) {
-                            notify("info", "The recording came out empty. Tap the mic and try again.");
+                            notify(
+                                "info",
+                                "The recording came out empty. Tap the mic and try again.",
+                            );
                         }
                     }
                 };
@@ -606,7 +621,10 @@ export function useVoiceMessage(onRecording) {
                         setState("recording");
                     })
                     .catch(() => {
-                        notify("error", "No microphone found, or its use is blocked for this site.");
+                        notify(
+                            "error",
+                            "No microphone found, or its use is blocked for this site.",
+                        );
                     });
             },
         };
@@ -652,7 +670,8 @@ const cycleVoiceLanguage = async () => {
 };
 
 /** A recording's clock reads seconds as m:ss. */
-const voiceClock = (seconds) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+const voiceClock = (seconds) =>
+    `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 
 /** The languages a voice message can be heard as: the code the server takes, its name, and what the chip reads. */
 const VOICE_LANGS = [
@@ -664,7 +683,9 @@ const VOICE_LANGS = [
 
 /** The person's language for voice messages, as the server takes it: none for its own guess. */
 export const voiceLanguage = () => {
-    const said = String(store.state.appearance?.voiceLang ?? "auto").trim().toLowerCase();
+    const said = String(store.state.appearance?.voiceLang ?? "auto")
+        .trim()
+        .toLowerCase();
 
     return /^[a-z]{2,3}$/.test(said) ? said : "";
 };

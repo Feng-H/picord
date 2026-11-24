@@ -72,19 +72,30 @@
                         <a class="badge" href="https://github.com/Feng-H/picord"
                             ><b>v0.29.0</b> 基于 Pi 的 Discord 风格个人 Agent 运行时 →</a
                         >
-                        <h1>Picord: 个人 Agent 的<br /><span class="grad">Discord 风格频道交互</span></h1>
+                        <h1>
+                            Picord: 个人 Agent 的<br /><span class="grad"
+                                >Discord 风格频道交互</span
+                            >
+                        </h1>
                         <p class="lead">
-                            我不是在“评估”这个项目，我每天生活在里面。在频道里出声思考、让 Agent 自动把碎片观点沉淀为卢曼卡片，输入框敲 <code>#</code> 跨频道引用，通过 <code>channel_post</code> 实现双向往返推送，长对话语义检索彻底告别跨天失忆。
+                            我不是在“评估”这个项目，我每天生活在里面。在频道里出声思考、让 Agent
+                            自动把碎片观点沉淀为卢曼卡片，输入框敲 <code>#</code> 跨频道引用，通过
+                            <code>channel_post</code>
+                            实现双向往返推送，长对话语义检索彻底告别跨天失忆。
                         </p>
                         <div class="cta">
-                            <a class="btn btn-primary" href="#get-started">快速开始 / Get started</a>
+                            <a class="btn btn-primary" href="#get-started"
+                                >快速开始 / Get started</a
+                            >
                             <a class="btn" href="https://github.com/Feng-H/picord"
                                 >GitHub 源码仓库</a
                             >
                         </div>
                         <div class="install">
                             <span class="prompt">$</span>
-                            <code id="install-cmd">git clone https://github.com/Feng-H/picord.git</code>
+                            <code id="install-cmd"
+                                >git clone https://github.com/Feng-H/picord.git</code
+                            >
                             <button class="copy" type="button" data-copy="#install-cmd">
                                 Copy
                             </button>
@@ -142,7 +153,13 @@
                                         <span class="icons">
                                             <svg viewBox="0 0 18 12" fill="currentColor">
                                                 <rect x="0" y="8" width="3" height="4" rx="0.8" />
-                                                <rect x="5" y="5.5" width="3" height="6.5" rx="0.8" />
+                                                <rect
+                                                    x="5"
+                                                    y="5.5"
+                                                    width="3"
+                                                    height="6.5"
+                                                    rx="0.8"
+                                                />
                                                 <rect x="10" y="3" width="3" height="9" rx="0.8" />
                                                 <rect x="15" y="0" width="3" height="12" rx="0.8" />
                                             </svg>
@@ -179,7 +196,8 @@
                             </div>
                             <h3>随时随地，原生触感</h3>
                             <p>
-                                专为手机触控打造。PWA 添加到主屏幕即用，Web Speech 语音实时听写，iOS 锁屏休眠唤醒 0.01 秒自动探活重连。
+                                专为手机触控打造。PWA 添加到主屏幕即用，Web Speech 语音实时听写，iOS
+                                锁屏休眠唤醒 0.01 秒自动探活重连。
                             </p>
                         </div>
                         <div class="pillar reveal">
@@ -193,13 +211,16 @@
                                     stroke-linejoin="round"
                                     aria-hidden="true"
                                 >
-                                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                                    <path
+                                        d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"
+                                    />
                                     <path d="M7 8h10M7 12h7M7 16h4" />
                                 </svg>
                             </div>
                             <h3>Discord 风格频道交互</h3>
                             <p>
-                                告别杂乱堆叠的单窗口。输入框输入 <code>#</code> 呼出频道引用，Agent 通过 <code>channel_post</code> 自主跨频道协同接力。
+                                告别杂乱堆叠的单窗口。输入框输入 <code>#</code> 呼出频道引用，Agent
+                                通过 <code>channel_post</code> 自主跨频道协同接力。
                             </p>
                         </div>
                         <div class="pillar reveal">
@@ -220,7 +241,8 @@
                             </div>
                             <h3>持久可靠，无惧重启</h3>
                             <p>
-                                基于 Pi Durable 底层，每个模型请求、代码修改与状态原子提交写入 SQLite，服务器随时重启工作无损接续。
+                                基于 Pi Durable 底层，每个模型请求、代码修改与状态原子提交写入
+                                SQLite，服务器随时重启工作无损接续。
                             </p>
                         </div>
                     </div>
@@ -234,17 +256,26 @@
                         <span class="kicker">思维频道 · 出声思考</span>
                         <h2>#smalltalk 与卢曼卡片</h2>
                         <p>
-                            我在 <code>#smalltalk</code> 里“出声思考”：想到什么说一句，中文、碎片化、不整理。这套机制在实战中自发生长：
+                            我在
+                            <code>#smalltalk</code>
+                            里“出声思考”：想到什么说一句，中文、碎片化、不整理。这套机制在实战中自发生长：
                         </p>
                         <ul class="points">
                             <li>
-                                <b>我说，它记，倒计时归零。</b> 每发一条消息，Agent 把新观点追加到记录中并重置 1 小时定时器。停止发言后静默到点自动生成总结。
+                                <b>我说，它记，倒计时归零。</b> 每发一条消息，Agent
+                                把新观点追加到记录中并重置 1
+                                小时定时器。停止发言后静默到点自动生成总结。
                             </li>
                             <li>
-                                <b>总结不是摘要，是每个观点一张卢曼卡片。</b> 自动赋予编号（如 <code>ZK-2026-…</code>）、摘录原文、记录来源时间，写入 <code>.dialogue-session/</code> 并自动 git 提交。
+                                <b>总结不是摘要，是每个观点一张卢曼卡片。</b> 自动赋予编号（如
+                                <code>ZK-2026-…</code>）、摘录原文、记录来源时间，写入
+                                <code>.dialogue-session/</code> 并自动 git 提交。
                             </li>
                             <li>
-                                <b>产出直接推送给干活的频道。</b> 提炼出的“待重写卡片 / 候选连接 / 矛盾警报”，Agent 用 <code>channel_post</code> 直接推入 <code>#zk-review</code> 频道，由那边的 Agent 自主接单并反向回执确认。
+                                <b>产出直接推送给干活的频道。</b> 提炼出的“待重写卡片 / 候选连接 /
+                                矛盾警报”，Agent 用 <code>channel_post</code> 直接推入
+                                <code>#zk-review</code> 频道，由那边的 Agent
+                                自主接单并反向回执确认。
                             </li>
                         </ul>
                     </div>
@@ -279,13 +310,20 @@
                         </p>
                         <ul class="points">
                             <li>
-                                <b>输入框敲 # 引用频道：</b> 在任何频道的输入框输入 <code>#</code>，自动弹出频道候选。选中不仅引用文字，还会将该会话的隐藏标识附送给 Agent，供其自主按需检索上下文。
+                                <b>输入框敲 # 引用频道：</b> 在任何频道的输入框输入
+                                <code>#</code
+                                >，自动弹出频道候选。选中不仅引用文字，还会将该会话的隐藏标识附送给
+                                Agent，供其自主按需检索上下文。
                             </li>
                             <li>
-                                <b>channel_post 自主推送：</b> 一个频道的 Agent 运算出结论或 Review 任务后，直接调用 <code>channel_post</code> 投递到目标频道，目标频道的 Agent 接收并在自己的会话中直接回答。
+                                <b>channel_post 自主推送：</b> 一个频道的 Agent 运算出结论或 Review
+                                任务后，直接调用
+                                <code>channel_post</code> 投递到目标频道，目标频道的 Agent
+                                接收并在自己的会话中直接回答。
                             </li>
                             <li>
-                                <b>双向确认与闭环：</b> 目标频道处理完成后，自主反向回复确认，形成端到端的完整协作工作流。
+                                <b>双向确认与闭环：</b>
+                                目标频道处理完成后，自主反向回复确认，形成端到端的完整协作工作流。
                             </li>
                         </ul>
                     </div>
@@ -293,7 +331,9 @@
                         <figure class="window">
                             <div class="window-bar" aria-hidden="true">
                                 <span class="window-dots"><i></i><i></i><i></i></span>
-                                <span class="window-url">channel_post · 两个频道之间的双向确认</span>
+                                <span class="window-url"
+                                    >channel_post · 两个频道之间的双向确认</span
+                                >
                                 <span></span>
                             </div>
                             <img
@@ -316,17 +356,22 @@
                         <span class="kicker">治好“跨天失忆”</span>
                         <h2>search_history 历史档案检索</h2>
                         <p>
-                            长对话会触发 Compaction 压缩，摘要往往“保骨架、丢细节”。当面对“我们昨天讨论过某某接口吗？”这类问题时：
+                            长对话会触发 Compaction
+                            压缩，摘要往往“保骨架、丢细节”。当面对“我们昨天讨论过某某接口吗？”这类问题时：
                         </p>
                         <ul class="points">
                             <li>
-                                <b>先查，再答。</b> 内置专属工具 <code>search_history</code>，直接检索历史原始条目，支持指定当前会话或跨全部会话检索。
+                                <b>先查，再答。</b> 内置专属工具
+                                <code>search_history</code
+                                >，直接检索历史原始条目，支持指定当前会话或跨全部会话检索。
                             </li>
                             <li>
-                                <b>时间与预算控制。</b> 严格控制检索预算与命中范围，答案百分之百从真实历史原文里提取。
+                                <b>时间与预算控制。</b>
+                                严格控制检索预算与命中范围，答案百分之百从真实历史原文里提取。
                             </li>
                             <li>
-                                <b>系统提示词铁律约束。</b> 规则明确禁止模型猜测记忆：“*不许猜能查到的东西*”。
+                                <b>系统提示词铁律约束。</b>
+                                规则明确禁止模型猜测记忆：“*不许猜能查到的东西*”。
                             </li>
                         </ul>
                     </div>
@@ -357,13 +402,20 @@
                         <span class="kicker">桌面与宽屏响应</span>
                         <h2>全局视野，尽收眼底</h2>
                         <p>
-                            在大屏幕上，频道列表、会话时间轴、代码 Diff 对比与后台 Agent 巡视卡片并排展示，审批操作一键直达。
+                            在大屏幕上，频道列表、会话时间轴、代码 Diff 对比与后台 Agent
+                            巡视卡片并排展示，审批操作一键直达。
                         </p>
                     </div>
                     <figure class="window reveal">
                         <div class="window-bar" aria-hidden="true">
                             <span class="window-dots"><i></i><i></i><i></i></span>
-                            <span class="window-url"><svg viewBox="0 0 12 12" fill="currentColor"><path d="M3.5 5V3.6a2.5 2.5 0 0 1 5 0V5h.6c.5 0 .9.4.9.9v4.2c0 .5-.4.9-.9.9H2.9a.9.9 0 0 1-.9-.9V5.9c0-.5.4-.9.9-.9h.6Zm1.2 0h2.6V3.6a1.3 1.3 0 0 0-2.6 0V5Z"/></svg>bot.851127.xyz</span>
+                            <span class="window-url"
+                                ><svg viewBox="0 0 12 12" fill="currentColor">
+                                    <path
+                                        d="M3.5 5V3.6a2.5 2.5 0 0 1 5 0V5h.6c.5 0 .9.4.9.9v4.2c0 .5-.4.9-.9.9H2.9a.9.9 0 0 1-.9-.9V5.9c0-.5.4-.9.9-.9h.6Zm1.2 0h2.6V3.6a1.3 1.3 0 0 0-2.6 0V5Z"
+                                    /></svg
+                                >bot.851127.xyz</span
+                            >
                             <span></span>
                         </div>
                         <img
@@ -384,56 +436,109 @@
                     <div class="section-head center reveal">
                         <span class="kicker">特性全览</span>
                         <h2>更强、更稳、更懂日常</h2>
-                        <p>
-                            全面吸收 Pi 与 Pi Durable 的纯粹工程优势，结合频道体系与本土化体验：
-                        </p>
+                        <p>全面吸收 Pi 与 Pi Durable 的纯粹工程优势，结合频道体系与本土化体验：</p>
                     </div>
                     <div class="bento">
                         <article class="card wide reveal">
                             <div class="icon">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="1.8"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    aria-hidden="true"
+                                >
                                     <path d="m13 3-9 11h7l-1 7 9-11h-7z" />
                                 </svg>
                             </div>
                             <h3>热代码即时生效，无打包步骤</h3>
                             <p>
-                                采用纯原生 Web 架构，没有繁琐的 Webpack/Vite 前端构建。修改 Web 资源浏览器自动热重载，修改扩展在服务运行中直接热加载。
+                                采用纯原生 Web 架构，没有繁琐的 Webpack/Vite 前端构建。修改 Web
+                                资源浏览器自动热重载，修改扩展在服务运行中直接热加载。
                             </p>
                         </article>
                         <article class="card reveal">
                             <div class="icon">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="1.8"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    aria-hidden="true"
+                                >
+                                    <path
+                                        d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"
+                                    />
                                     <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8" />
                                 </svg>
                             </div>
                             <h3>原生语音实时听写</h3>
-                            <p>内置 Web Speech API 支持，在移动端与桌面端长按或点击麦克风，高精度语音直出，出声思考更自然。</p>
+                            <p>
+                                内置 Web Speech API
+                                支持，在移动端与桌面端长按或点击麦克风，高精度语音直出，出声思考更自然。
+                            </p>
                         </article>
                         <article class="card reveal">
                             <div class="icon">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="1.8"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    aria-hidden="true"
+                                >
                                     <circle cx="12" cy="12" r="9" />
                                     <path d="M3 12h18" />
-                                    <path d="M12 3c2.6 2.6 3.8 5.6 3.8 9s-1.2 6.4-3.8 9c-2.6-2.6-3.8-5.6-3.8-9S9.4 5.6 12 3Z" />
+                                    <path
+                                        d="M12 3c2.6 2.6 3.8 5.6 3.8 9s-1.2 6.4-3.8 9c-2.6-2.6-3.8-5.6-3.8-9S9.4 5.6 12 3Z"
+                                    />
                                 </svg>
                             </div>
                             <h3>无缝双语与中文界面</h3>
-                            <p>界面全量深度汉化，涵盖设置、外观、快捷指令与工具提示，中英对照，一键顺畅切换。</p>
+                            <p>
+                                界面全量深度汉化，涵盖设置、外观、快捷指令与工具提示，中英对照，一键顺畅切换。
+                            </p>
                         </article>
                         <article class="card reveal">
                             <div class="icon">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                    <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="1.8"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    aria-hidden="true"
+                                >
+                                    <path
+                                        d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"
+                                    />
                                     <path d="M14 3v5h5M9.5 13h5M12 10.5v5M9.5 18h5" />
                                 </svg>
                             </div>
                             <h3>文件时间轴与 Git 集成</h3>
-                            <p>全量记录每次代码变更，实时查看 Diff 对比，分支自由切换，随时回滚与检视。</p>
+                            <p>
+                                全量记录每次代码变更，实时查看 Diff
+                                对比，分支自由切换，随时回滚与检视。
+                            </p>
                         </article>
                         <article class="card reveal">
                             <div class="icon">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="1.8"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    aria-hidden="true"
+                                >
                                     <circle cx="12" cy="5.5" r="2.5" />
                                     <circle cx="5.5" cy="18.5" r="2.5" />
                                     <circle cx="18.5" cy="18.5" r="2.5" />
@@ -441,19 +546,34 @@
                                 </svg>
                             </div>
                             <h3>子 Agent (Subagents) 协同</h3>
-                            <p>支持自主孵化辅助子 Agent 执行特定任务，各自具备独立上下文与工具权限，统一汇报。</p>
+                            <p>
+                                支持自主孵化辅助子 Agent
+                                执行特定任务，各自具备独立上下文与工具权限，统一汇报。
+                            </p>
                         </article>
                         <article class="card wide reveal">
                             <div class="icon">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="1.8"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    aria-hidden="true"
+                                >
                                     <rect x="6" y="6" width="12" height="12" rx="2" />
                                     <rect x="10" y="10" width="4" height="4" rx="0.5" />
-                                    <path d="M9 2.5V6M15 2.5V6M9 18v3.5M15 18v3.5M2.5 9H6M2.5 15H6M18 9h3.5M18 15h3.5" />
+                                    <path
+                                        d="M9 2.5V6M15 2.5V6M9 18v3.5M15 18v3.5M2.5 9H6M2.5 15H6M18 9h3.5M18 15h3.5"
+                                    />
                                 </svg>
                             </div>
                             <h3>自由选择模型与思考等级</h3>
                             <p>
-                                自由选用 Groq、Anthropic Claude、OpenAI 或本地 Ollama 模型，独立设定每个会话的思考深度（Thinking Budget），消耗预算清晰可见。
+                                自由选用 Groq、Anthropic Claude、OpenAI 或本地 Ollama
+                                模型，独立设定每个会话的思考深度（Thinking
+                                Budget），消耗预算清晰可见。
                             </p>
                         </article>
                     </div>
@@ -466,31 +586,36 @@
                     <div class="split-copy reveal">
                         <span class="kicker">安全防线</span>
                         <h2>掌控每一步执行权限</h2>
-                        <p>
-                            Agent 拥有真实命令行权限，但每一步高危操作都在掌控之中：
-                        </p>
+                        <p>Agent 拥有真实命令行权限，但每一步高危操作都在掌控之中：</p>
                         <ul class="points">
                             <li>
-                                <b>Lancet Guard 防护：</b> 智能拦截 Bash、写文件与危险编辑，高危操作弹出审批卡片等待人工授权。
+                                <b>Lancet Guard 防护：</b> 智能拦截
+                                Bash、写文件与危险编辑，高危操作弹出审批卡片等待人工授权。
                             </li>
                             <li>
-                                <b>细粒度角色控制：</b> 访客可阅览、讨论与体验，不可越权下发 Shell 命令或修改敏感系统状态。
+                                <b>细粒度角色控制：</b> 访客可阅览、讨论与体验，不可越权下发 Shell
+                                命令或修改敏感系统状态。
                             </li>
                             <li>
-                                <b>外部输入隔离为数据：</b> Webhook、GitHub 触发与外部引用均被标记为纯数据（Data），严格防止 Prompt 注入攻击。
+                                <b>外部输入隔离为数据：</b> Webhook、GitHub
+                                触发与外部引用均被标记为纯数据（Data），严格防止 Prompt 注入攻击。
                             </li>
                         </ul>
                     </div>
                     <div class="reveal">
-                        <div
-                            class="approval"
-                            role="img"
-                            aria-label="Lancet Guard 审批拦截卡片"
-                        >
+                        <div class="approval" role="img" aria-label="Lancet Guard 审批拦截卡片">
                             <div aria-hidden="true">
                                 <div class="approval-head">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round">
-                                        <path d="M12 3 4.5 6v5.5c0 4.6 3.1 8.2 7.5 9.5 4.4-1.3 7.5-4.9 7.5-9.5V6z" />
+                                    <svg
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                        stroke-linejoin="round"
+                                    >
+                                        <path
+                                            d="M12 3 4.5 6v5.5c0 4.6 3.1 8.2 7.5 9.5 4.4-1.3 7.5-4.9 7.5-9.5V6z"
+                                        />
                                     </svg>
                                     Lancet Guard 安全拦截提示
                                 </div>
@@ -515,16 +640,27 @@
                         <h2>部署到你自己的设备</h2>
                         <ol class="steps">
                             <li>
-                                <span><b>克隆仓库</b>拉取 Picord 源码到 VPS、个人电脑或服务器。</span>
+                                <span
+                                    ><b>克隆仓库</b>拉取 Picord 源码到 VPS、个人电脑或服务器。</span
+                                >
                             </li>
                             <li>
-                                <span><b>安装依赖并启动</b>运行 <code>npm install</code> 与 <code>npm start</code>。</span>
+                                <span
+                                    ><b>安装依赖并启动</b>运行 <code>npm install</code> 与
+                                    <code>npm start</code>。</span
+                                >
                             </li>
                             <li>
-                                <span><b>扫码登录</b>手机扫描终端输出的二维码或直接在浏览器打开登录链接。</span>
+                                <span
+                                    ><b>扫码登录</b
+                                    >手机扫描终端输出的二维码或直接在浏览器打开登录链接。</span
+                                >
                             </li>
                             <li>
-                                <span><b>加入主屏幕</b>在 Safari 或 Chrome 点击“添加到主屏幕”，开启沉浸式 PWA 体验。</span>
+                                <span
+                                    ><b>加入主屏幕</b>在 Safari 或 Chrome
+                                    点击“添加到主屏幕”，开启沉浸式 PWA 体验。</span
+                                >
                             </li>
                         </ol>
                     </div>
@@ -574,7 +710,8 @@
 <span class="p">$ </span>cd picord &amp;&amp; npm install --ignore-scripts
 <span class="p">$ </span>termux-wake-lock &amp;&amp; npm start</pre>
                         <div class="term-foot">
-                            运行期间快捷键：<kbd>q</kbd> 退出，<kbd>r</kbd> 重启服务，<kbd>o</kbd> 在浏览器打开，<kbd>s</kbd> 重新打印登录二维码。更多信息参阅
+                            运行期间快捷键：<kbd>q</kbd> 退出，<kbd>r</kbd> 重启服务，<kbd>o</kbd>
+                            在浏览器打开，<kbd>s</kbd> 重新打印登录二维码。更多信息参阅
                             <a href="https://github.com/Feng-H/picord#readme">README</a>。
                         </div>
                     </div>

@@ -38,6 +38,8 @@ import {
     type UserInput,
 } from "@earendil-works/pi-durable";
 import type { PocketApp } from "./app.ts";
+import type { Channel } from "./channels.ts";
+import { normalizeChannelName } from "./channels.ts";
 import type { User } from "./config.ts";
 import {
     AuthorsDoc,
@@ -439,18 +441,16 @@ export class Commands {
         const requested = optionalText(request.cwd, "cwd") ?? app.defaultCwd;
 
         // One channel of a name: a second would split its conversation in two.
-        if (channel && title !== undefined) {
-            const said = title.trim().replace(/^#/, "").toLowerCase();
-            const clash = app
-                .sessions()
-                .find(
-                    (session) =>
-                        session.channel === true &&
-                        (session.title ?? "").trim().replace(/^#/, "").toLowerCase() === said,
-                );
+        if (channel) {
+            if (title === undefined || title.trim() === "") {
+                throw new HttpError(400, "Channel name cannot be empty.");
+            }
+
+            const name = normalizeChannelName(title);
+            const clash = app.channels.get(name);
 
             if (clash !== undefined) {
-                throw new HttpError(409, `A channel called ${said} is already here.`);
+                throw new HttpError(409, `A channel called #${name} is already here.`);
             }
         }
 
@@ -498,7 +498,13 @@ export class Commands {
                                 createdAt: now,
                                 updatedAt: now,
                                 createdBy: user.id,
-                                ...(title === undefined ? {} : { title }),
+                                ...(title === undefined
+                                    ? {}
+                                    : {
+                                          title: channel
+                                              ? `#${normalizeChannelName(title)}`
+                                              : title,
+                                      }),
                                 ...(channel ? { channel: true } : {}),
                                 ...(worktree === undefined ? {} : { worktree }),
                             };
@@ -767,6 +773,21 @@ export class Commands {
 
         const before = app.sessionMeta(id);
 
+        if (patch.channel === true || (before?.channel === true && patch.title !== undefined)) {
+            const newTitle = patch.title ?? before?.title;
+
+            if (newTitle === undefined || newTitle.trim() === "") {
+                throw new HttpError(400, "Channel name cannot be empty.");
+            }
+
+            const name = normalizeChannelName(newTitle);
+            const clash = app.channels.get(name);
+
+            if (clash !== undefined && Number(clash.id) !== Number(id)) {
+                throw new HttpError(409, `A channel called #${name} is already here.`);
+            }
+        }
+
         await app.harness.commit(async (tx) => {
             const sessions = await tx.doc(SessionsDoc);
             const meta = sessions.items[String(id)];
@@ -777,7 +798,11 @@ export class Commands {
 
             // A rename moves the session up the list. Archiving does not: brought back, or undone, it returns to where it was.
             if (patch.title !== undefined) {
-                meta.title = oneLine(patch.title) || undefined;
+                const isChannel = meta.channel === true || patch.channel === true;
+                const line = oneLine(patch.title);
+
+                meta.title =
+                    isChannel && line ? `#${normalizeChannelName(line)}` : line || undefined;
                 meta.updatedAt = Date.now();
             }
 
@@ -1036,7 +1061,11 @@ export class Commands {
      * What a message's attached audio says (`🎙 …`, one line each): the server's speech-to-text hears each, most
      * recent last. An audio that cannot be heard leaves no line, and a warning goes to the session's notices.
      */
-    async #heardAudio(id: ConversationId, attachments: Attachment[], language = ""): Promise<string> {
+    async #heardAudio(
+        id: ConversationId,
+        attachments: Attachment[],
+        language = "",
+    ): Promise<string> {
         const audio = attachments.filter(
             (file) => file.mime?.startsWith("audio/") === true && file.size <= MAX_STT,
         );
@@ -1048,11 +1077,17 @@ export class Commands {
         const lines = await Promise.all(
             audio.slice(0, 4).map(async (file) => {
                 try {
-                    const words = (await transcribeAudio(await readFile(file.path), file.mime, language)).trim();
+                    const words = (
+                        await transcribeAudio(await readFile(file.path), file.mime, language)
+                    ).trim();
 
                     return words === "" ? undefined : `🎙 ${words}`;
                 } catch (error) {
-                    this.#app.notice("warning", `Could not transcribe ${file.name}: ${describe(error)}`, id);
+                    this.#app.notice(
+                        "warning",
+                        `Could not transcribe ${file.name}: ${describe(error)}`,
+                        id,
+                    );
 
                     return undefined;
                 }
@@ -1270,24 +1305,21 @@ export class Commands {
             return undefined;
         }
 
-        const channels = this.#app
-            .sessions()
-            .filter(
-                (session) =>
-                    session.channel === true &&
-                    tokens.includes((session.title ?? "").toLowerCase()),
-            );
+        const channels = tokens
+            .map((token) => this.#app.channels.get(token))
+            .filter((channel): channel is Channel => channel !== undefined);
 
         if (channels.length === 0) {
             return undefined;
         }
 
-        const lines = channels.map((session) => {
-            const title = (session.title ?? "").replace(/[\n>"]/g, " ");
-            const folder = session.cwd.replace(/[\n>"]/g, " ");
-            const closed = session.archived === true ? " (archived: closed, but its history remains)" : "";
+        const lines = channels.map((channel) => {
+            const title = channel.name;
+            const folder = (channel.cwd ?? "").replace(/[\n>"]/g, " ");
+            const closed =
+                channel.archived === true ? " (archived: closed, but its history remains)" : "";
 
-            return `#${title} is channel session ${session.id}, in ${folder}${closed}.`;
+            return `#${title} is channel session ${String(channel.id)}, in ${folder}${closed}.`;
         });
 
         return [

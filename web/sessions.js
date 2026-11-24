@@ -831,7 +831,8 @@ function SessionRow({
     // A finger held on it, before its actions open: the list's press sets it, and only this row draws again.
     const [pressing, setPressing] = useState(false);
     const channel = session.channel === true;
-    const title = channel ? `#${session.title ?? ""}` : session.title ?? t("New session");
+    const cleanTitle = (session.title ?? "").replace(/^#/, "");
+    const title = channel ? `#${cleanTitle}` : (session.title ?? t("New session"));
     const path = shortPath(session.cwd, home);
     const where = [
         session.worktree ? `${path} ⎇ ${session.worktree.branch}` : path,
@@ -923,9 +924,9 @@ function SessionRow({
                 ${channel && html`<span class="channel-hash" aria-hidden="true">#</span>`}
                 ${
                     hit
-                        ? html`<span class="session-name">${channel ? session.title ?? "" : title}</span>
+                        ? html`<span class="session-name">${channel ? (session.title ?? "") : title}</span>
                             <span class="session-hit">${withMark(hit, needle)}</span>`
-                        : withMark(channel ? session.title ?? "" : title, needle)
+                        : withMark(channel ? (session.title ?? "") : title, needle)
                 }
             </span>
             <span class="session-side">
@@ -1279,9 +1280,7 @@ function groupsOf(shown, { tab, needle, home, pinned, today }) {
         groups.push({ key: "pinned", label: "Pinned", rows: first });
     }
 
-    const rest = shown.filter(
-        (session) => !pins.has(session.id) && session.channel !== true,
-    );
+    const rest = shown.filter((session) => !pins.has(session.id) && session.channel !== true);
     const byKey = new Map();
 
     for (const session of rest) {
@@ -2385,8 +2384,7 @@ function AllSessions({ compact = false }) {
                         }
                       : undefined;
             // The channels' +: a new channel, named in a sheet, starting where the last one lives.
-            const addChannel =
-                group.kind === "channels" &&
+            const addChannel = group.kind === "channels" &&
                 canSteer() && {
                     title: t("New channel"),
                     run: () =>
@@ -2404,17 +2402,15 @@ function AllSessions({ compact = false }) {
                                 }
 
                                 // One of a name: a second channel called the same would split its talk in two.
-                                const clash = sessions.find(
-                                    (each) =>
-                                        each.channel === true &&
-                                        (each.title ?? "")
-                                            .trim()
-                                            .replace(/^#/, "")
-                                            .toLowerCase() === said.toLowerCase(),
+                                const cleanSaid = said.trim().toLowerCase();
+                                const clash = store.channels.find(
+                                    (each) => each.name === cleanSaid,
                                 );
 
                                 if (clash !== undefined) {
-                                    throw new Error(t("A channel called #$ is already here.", said));
+                                    throw new Error(
+                                        t("A channel called #$ is already here.", said),
+                                    );
                                 }
 
                                 const cwd =
@@ -2428,7 +2424,10 @@ function AllSessions({ compact = false }) {
                                 });
 
                                 navigate(created.id);
-                                notify("info", t("Channel # $ is new; the agent answers here.", said));
+                                notify(
+                                    "info",
+                                    t("Channel # $ is new; the agent answers here.", said),
+                                );
                             },
                         }),
                 };
@@ -2460,9 +2459,11 @@ function AllSessions({ compact = false }) {
                                   class=${`group-trouble ${trouble}`}
                                   role="img"
                                   aria-label=${t(trouble === "waiting" ? "A session needs you" : "A session failed")}
-                                  title=${
-                                      t(trouble === "waiting" ? "A session here needs you" : "A session here failed")
-                                  }
+                                  title=${t(
+                                      trouble === "waiting"
+                                          ? "A session here needs you"
+                                          : "A session here failed",
+                                  )}
                               ></span>`
                           }
                           <span class="group-count" data-part="session-group-count">
@@ -2858,8 +2859,7 @@ function Rail({ foldable = false, folded = false }) {
     const failed = failing(agents);
     const { unread, peekSeen, server } = store.state;
     const needs = useMemo(() => needsYouCount(sessions), [sessions, unread, peekSeen, server]);
-    const sessionsLabel =
-        needs > 0 ? t("Sessions, $ need you", needs) : t("Sessions");
+    const sessionsLabel = needs > 0 ? t("Sessions, $ need you", needs) : t("Sessions");
     const needsBadge =
         needs > 0 && html`<span class="rail-count attn" data-part="rail-needs">${needs}</span>`;
     const keys = APPLE ? "⌘B" : "Ctrl+B";
@@ -2891,7 +2891,9 @@ function Rail({ foldable = false, folded = false }) {
                     data-part="rail-button"
                     data-state=${railState(!folded)}
                     title=${
-                        folded ? t("Sessions ($ unfolds the list)", keys) : t("Sessions ($ folds the list)", keys)
+                        folded
+                            ? t("Sessions ($ unfolds the list)", keys)
+                            : t("Sessions ($ folds the list)", keys)
                     }
                     aria-label=${sessionsLabel}
                     aria-expanded=${!folded}

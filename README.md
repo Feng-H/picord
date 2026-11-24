@@ -54,7 +54,7 @@ English: `channel_post` delivers a message into another channel, marked with whe
 
 ## search_history:治好"跨天失忆"
 
-长对话会触发摘要(Compaction),摘要保形状、丢细节。于是当有人问"我们昨天讨论过 X 吗?"——**先查,再答**:工具 `search_history` 直接检索原始条目(本会话或全部会话,带时间与条数预算),答案从原文里来。系统提示词里立了规矩:*不许猜能查到的东西*。
+长对话会触发摘要(Compaction),摘要保形状、丢细节。于是当有人问"我们昨天讨论过 X 吗?"——**先查,再答**:工具 `search_history` 直接检索原始条目(本会话或全部会话,带时间与条数预算),答案从原文里来。系统提示词里立了规矩:_不许猜能查到的东西_。
 
 English: compaction summarizes; `search_history` retrieves. The prompt now tells Pi: when a question reaches past the visible context, look first and answer from what was found.
 

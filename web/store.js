@@ -404,6 +404,26 @@ export const store = {
 
         return () => this.listeners.delete(listener);
     },
+    /**
+     * Active channels derived from sessions, with normalized name and title.
+     */
+    get channels() {
+        return (this.state.sessions || [])
+            .filter((each) => each.channel === true && each.archived !== true)
+            .map((each) => {
+                const raw = each.title ?? "";
+                const name = raw.replace(/^#/, "").trim().toLowerCase();
+
+                return {
+                    id: each.id,
+                    name,
+                    title: name,
+                    cwd: each.cwd,
+                    archived: each.archived === true,
+                    session: each,
+                };
+            });
+    },
 };
 
 // ─── Marked-unread sessions (this browser) ──────────────────────────────────────
@@ -2917,10 +2937,7 @@ export const actions = {
     approve: (id, allow, values) =>
         api(`approvals/${encodeURIComponent(id)}`, { allow, ...(values ? { values } : {}) }),
     /** `worktree`: the session works in a git worktree of its own, made from the folder. */
-    createSession: (
-        cwd,
-        { worktree = false, channel = false, title = undefined } = {},
-    ) =>
+    createSession: (cwd, { worktree = false, channel = false, title = undefined } = {}) =>
         api("sessions", {
             cwd,
             ...(title !== undefined ? { title } : {}),

@@ -602,7 +602,9 @@ export function createApi(options: HttpOptions, auth: Auth) {
         }
 
         if (first === "sessions" && second !== undefined && method === "POST") {
-            const body = await readJson<{ title?: string; archived?: boolean; channel?: unknown }>(request);
+            const body = await readJson<{ title?: string; archived?: boolean; channel?: unknown }>(
+                request,
+            );
 
             const { repeating } = await app.commands.updateSession(
                 conversationId(second),

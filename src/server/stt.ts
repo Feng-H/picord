@@ -22,13 +22,21 @@ export const sttLanguage = (value: string | null | undefined): string => {
 
 /** The upload's name: Groq reads an audio file's format from its extension, so it follows the type. */
 function speechName(type: string): string {
-    if (type.includes("mp4")) {return "speech.m4a";}
+    if (type.includes("mp4")) {
+        return "speech.m4a";
+    }
 
-    if (type.includes("ogg")) {return "speech.ogg";}
+    if (type.includes("ogg")) {
+        return "speech.ogg";
+    }
 
-    if (type.includes("wav")) {return "speech.wav";}
+    if (type.includes("wav")) {
+        return "speech.wav";
+    }
 
-    if (type.includes("mpeg")) {return "speech.mp3";}
+    if (type.includes("mpeg")) {
+        return "speech.mp3";
+    }
 
     return "speech.webm";
 }
@@ -66,14 +74,20 @@ export async function transcribeAudio(audio: Buffer, mime: string, language = ""
             body: form,
         });
     } catch (error) {
-        throw new HttpError(502, `Could not reach the speech-to-text service: ${(error as Error).message}`);
+        throw new HttpError(
+            502,
+            `Could not reach the speech-to-text service: ${(error as Error).message}`,
+        );
     }
 
     if (!out.ok) {
         const detail = (await out.text().catch(() => "")).slice(0, 200);
         const code = out.status === 429 ? 429 : 502;
 
-        throw new HttpError(code, `Transcription failed (${out.status})${detail === "" ? "" : `: ${detail}`}`);
+        throw new HttpError(
+            code,
+            `Transcription failed (${out.status})${detail === "" ? "" : `: ${detail}`}`,
+        );
     }
 
     const data = (await out.json().catch(() => ({}))) as { text?: string };

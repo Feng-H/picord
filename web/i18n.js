@@ -76,8 +76,10 @@ const WORDS = {
         German: "德文",
         "This browser cannot record audio for a voice message.": "此浏览器无法录制语音。",
         "This browser cannot record audio for dictation.": "此浏览器无法录音进行听写。",
-        "No microphone found, or its use is blocked for this site.": "找不到麦克风,或此网站无权使用麦克风。",
-        "The recording came out empty. Tap the mic and try again.": "录到的内容是空的,请点麦克风再试一次。",
+        "No microphone found, or its use is blocked for this site.":
+            "找不到麦克风,或此网站无权使用麦克风。",
+        "The recording came out empty. Tap the mic and try again.":
+            "录到的内容是空的,请点麦克风再试一次。",
         "Dictate (Alt+V)": "听写 (Alt+V)",
         "Listening: tap to stop (Alt+V)": "听写中:点按停止 (Alt+V)",
         Dictate: "听写",
@@ -156,7 +158,8 @@ const WORDS = {
         "Scheduled messages": "定时消息",
         "Watch pull request": "盯住 Pull Request",
         "fix CI, answer reviews": "修 CI、回应评审",
-        "Link copied. Other signed-in devices can open it.": "链接已复制。其他已登录的设备可以打开它。",
+        "Link copied. Other signed-in devices can open it.":
+            "链接已复制。其他已登录的设备可以打开它。",
         "Could not copy.": "复制失败。",
         "Export as Markdown": "导出为 Markdown",
         "the whole history": "完整历史",
@@ -189,7 +192,8 @@ const WORDS = {
         "models.json and providers": "models.json 与供应商",
         Extensions: "扩展",
         "Restart server": "重启服务器",
-        "Restarting. Running work continues after the restart.": "重启中。正在运行的工作会在重启后继续。",
+        "Restarting. Running work continues after the restart.":
+            "重启中。正在运行的工作会在重启后继续。",
         "running work resumes": "运行中的工作会继续",
         "Sign out": "退出登录",
         // 外观页:主题卡与字体工具。
@@ -198,7 +202,8 @@ const WORDS = {
         "light and dark": "明暗两套",
         light: "浅色",
         "Desktop · $": "桌面 · $",
-        "Follow the Omarchy theme of the machine Pi Pocket runs on": "跟随 Pi Pocket 所在机器的 Omarchy 主题",
+        "Follow the Omarchy theme of the machine Pi Pocket runs on":
+            "跟随 Pi Pocket 所在机器的 Omarchy 主题",
         "Follows your desktop: change the Omarchy theme and Pi Pocket changes with it.":
             "跟随你的桌面:改 Omarchy 主题,Pi Pocket 随之而变。",
         "Fonts for": "字体 ·",
@@ -217,12 +222,14 @@ const WORDS = {
         "Pi starts fresh: it no longer sees the messages so far, though everyone here still does.":
             "Pi 重新开始:不再看到之前的消息,但这里的人仍能看到。",
         "Handoff note (optional)": "交接备注(可选)",
-        "e.g. We fixed the login bug; next is the signup form.": "例:登录 bug 已修;接下来是注册表单。",
+        "e.g. We fixed the login bug; next is the signup form.":
+            "例:登录 bug 已修;接下来是注册表单。",
         "Start a new context": "开始新上下文",
         Instructions: "指令",
         "Pi gets these with every message in this session, after its own instructions. Everyone here can see them. Leave empty for none.":
             "Pi 在本会话的每条消息都会带上这些指令(在其自身指令之后)。这里所有人可见。留空则不设。",
-        "e.g. Use pnpm, not npm. Ask before adding dependencies.": "例:用 pnpm 不用 npm;加依赖前先问。",
+        "e.g. Use pnpm, not npm. Ask before adding dependencies.":
+            "例:用 pnpm 不用 npm;加依赖前先问。",
         "What should the summary keep? (optional)": "摘要要保留什么?(可选)",
         "e.g. the failing test names": "例:失败的测试名",
         Compact: "压缩",
@@ -258,7 +265,8 @@ const WORDS = {
         "Peeks: other sessions' live work beside this one": "速览:其他会话的实时进展",
         "Hide thinking": "隐藏思考",
         "Show thinking": "显示思考",
-        "Pi's thoughts above the live line and in the conversation": "Pi 的思考过程,显示在状态行上方和对话中",
+        "Pi's thoughts above the live line and in the conversation":
+            "Pi 的思考过程,显示在状态行上方和对话中",
         "Hide reply speed": "隐藏回复速度",
         "Show reply speed": "显示回复速度",
         "how fast the last answer came, under the message box": "上一条回答的速度,显示在输入框下方",
@@ -315,7 +323,8 @@ const WORDS = {
         "Other sessions beside this one, live while on screen: working, waiting for you, done since you looked, and pinned. Also the tiles button in the top bar":
             "在这一屏旁边实时显示其他会话:工作中、等你处理、你看后有更新、已置顶。也在顶栏的磁贴按钮$",
         "Desktop wallpaper": "桌面壁纸",
-        "Your wallpaper in the gaps between windows, while following the desktop": "跟随桌面时,窗口间隙里显示你的壁纸",
+        "Your wallpaper in the gaps between windows, while following the desktop":
+            "跟随桌面时,窗口间隙里显示你的壁纸",
         "Switch sessions with": "切换会话的方式",
         "Tabs: a strip above the session, one segment for each of the first nine sessions. Choosing Tabs folds the sidebar to its rail, and Sidebar unfolds it":
             "标签页:会话上方的一条,前九个会话各占一段。选标签页会把侧栏收成竖条,选侧栏则展开",
@@ -524,5 +533,7 @@ export const translated = () => uiLanguage() !== CODES[0];
 export function t(word, ...rest) {
     const said = WORDS[uiLanguage()]?.[word] ?? word;
 
-    return rest.length === 0 ? said : rest.reduce((out, each) => out.replace("$", String(each)), said);
+    return rest.length === 0
+        ? said
+        : rest.reduce((out, each) => out.replace("$", String(each)), said);
 }

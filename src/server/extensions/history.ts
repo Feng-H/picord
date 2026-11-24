@@ -19,7 +19,9 @@ export default function createHistory(host: PocketHost) {
                             '"current" (default): this conversation. "all": every session. Or a session number.',
                     }),
                 ),
-                limit: opt(num({ description: "How many matches to show (default 10, at most 25)" })),
+                limit: opt(
+                    num({ description: "How many matches to show (default 10, at most 25)" }),
+                ),
             }),
             replay: "safe",
             execute: async (args, api) => ({

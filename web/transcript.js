@@ -2438,7 +2438,9 @@ function AnswerActions({ entry }) {
     const names = (ids) =>
         ids
             .map((id) =>
-                id === me?.id ? t("you") : (users.find((user) => user.id === id)?.name ?? t("someone")),
+                id === me?.id
+                    ? t("you")
+                    : (users.find((user) => user.id === id)?.name ?? t("someone")),
             )
             .join(", ");
 
@@ -3246,7 +3248,11 @@ function LiveThought({ generation, entries, id }) {
 
     const empty = text === "";
     const streaming = thought?.streaming && !empty;
-    const label = empty ? t("Thinking") : thought.writing ? t("Current thought") : t("Latest thought");
+    const label = empty
+        ? t("Thinking")
+        : thought.writing
+          ? t("Current thought")
+          : t("Latest thought");
     const shown = !empty
         ? text
         : thought?.block.redacted

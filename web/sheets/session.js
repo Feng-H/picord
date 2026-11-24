@@ -63,7 +63,10 @@ function sessionItems(session) {
 
     return [
         [
-            { label: t("Open in new tab"), run: () => window.open(linkOf(id), "_blank", "noopener") },
+            {
+                label: t("Open in new tab"),
+                run: () => window.open(linkOf(id), "_blank", "noopener"),
+            },
             { label: t("Copy link"), run: () => copy(linkOf(id), "link") },
             { label: t("Copy folder path"), run: () => copy(session.cwd, "folder path") },
         ],

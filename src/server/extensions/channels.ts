@@ -19,11 +19,7 @@ export default function createChannels(host: PocketHost) {
             output: [
                 {
                     type: "text" as const,
-                    text: await host.channels.post(
-                        api.conversationId,
-                        args.channel,
-                        args.message,
-                    ),
+                    text: await host.channels.post(api.conversationId, args.channel, args.message),
                 },
             ],
         }),

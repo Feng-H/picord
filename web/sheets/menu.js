@@ -502,7 +502,7 @@ export function MenuSheet({ places = true }) {
             ${session && extensionMenuItems("session").map((each) => item(each.label, each.run, each.hint))}
             ${session && steer && driving && item(t("Instructions for Pi"), () => openSheet({ type: "instructions" }), instructions ? t("on") : t("none"))}
             ${conversation && steer && driving && item(t("Compact context"), () => openSheet({ type: "compact" }), t("summarize older messages"))}
-            ${conversation && steer && driving && item(t("New context"), () => openSheet({ type: "reset"}), t("Pi starts fresh; history stays"))}
+            ${conversation && steer && driving && item(t("New context"), () => openSheet({ type: "reset" }), t("Pi starts fresh; history stays"))}
             ${conversation && memoryAvailable() && item(t("Memory"), () => openSheet({ type: "memory" }), memoryHint(memory))}
             ${schedulesAvailable() && item(t("Scheduled messages"), () => openSheet({ type: "schedules" }), schedulesHint(view.schedules))}
             ${
@@ -522,7 +522,8 @@ export function MenuSheet({ places = true }) {
                 conversation &&
                 item(t("Copy link"), () =>
                     copyText(location.href).then(
-                        () => notify("info", t("Link copied. Other signed-in devices can open it.")),
+                        () =>
+                            notify("info", t("Link copied. Other signed-in devices can open it.")),
                         () => notify("error", t("Could not copy.")),
                     ),
                 )
@@ -590,7 +591,10 @@ export function MenuSheet({ places = true }) {
                         attempt(async () => {
                             await api("restart", {});
                             closeSheet();
-                            notify("info", t("Restarting. Running work continues after the restart."));
+                            notify(
+                                "info",
+                                t("Restarting. Running work continues after the restart."),
+                            );
                         }),
                     t("running work resumes"),
                 )

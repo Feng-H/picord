@@ -5876,7 +5876,9 @@ pre.diff .del {
     font: 10px/1.4 var(--mono);
     color: var(--muted);
     white-space: nowrap;
-    transition: color var(--t-hover) var(--ease-out), border-color var(--t-hover) var(--ease-out);
+    transition:
+        color var(--t-hover) var(--ease-out),
+        border-color var(--t-hover) var(--ease-out);
 }
 
 @media (hover: hover) {
@@ -5896,7 +5898,9 @@ pre.diff .del {
     font: 11px/1.4 var(--mono);
     color: var(--muted);
     white-space: nowrap;
-    transition: color var(--t-hover) var(--ease-out), border-color var(--t-hover) var(--ease-out);
+    transition:
+        color var(--t-hover) var(--ease-out),
+        border-color var(--t-hover) var(--ease-out);
 }
 
 @media (hover: hover) {
@@ -6682,7 +6686,9 @@ button.session-chip {
     place-items: center;
     border-radius: 5px;
     color: var(--faint);
-    transition: color var(--t-hover) var(--ease-out), background-color var(--t-hover) var(--ease-out);
+    transition:
+        color var(--t-hover) var(--ease-out),
+        background-color var(--t-hover) var(--ease-out);
 }
 
 @media (hover: hover) {
