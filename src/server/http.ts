@@ -26,7 +26,7 @@ import {
     WEB,
 } from "./http/assets.ts";
 import { type HttpOptions, json } from "./http/io.ts";
-import { join as joinPage, login, sharePage } from "./http/sign-in.ts";
+import { join as joinPage, login, register, sharePage } from "./http/sign-in.ts";
 import { themeFile } from "./http/theme-routes.ts";
 
 /** The version of the app bridge the web app speaks (`web/host.js`). */
@@ -191,6 +191,10 @@ export function createHandler(options: HttpOptions) {
 
             if (parts[0] === "login" && (request.method === "GET" || request.method === "POST")) {
                 return await login(auth, request, response, url);
+            }
+
+            if (parts[0] === "register" && (request.method === "GET" || request.method === "POST")) {
+                return await register(app, auth, request, response, url);
             }
 
             if (parts[0] === "join" && parts[1] !== undefined) {

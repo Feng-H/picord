@@ -27,7 +27,7 @@ export function iconSvg(vars) {
         </defs>
         <rect width="${SIZE}" height="${SIZE}" fill="${color("--o-bg-darker")}" />
         <rect x="40" y="40" width="432" height="432" rx="75" fill="${color("--o-bg")}" stroke="url(#ring)" stroke-width="12" />
-        <text x="256" y="350" font-family="Georgia, 'Times New Roman', serif" font-size="280" text-anchor="middle" fill="${color("--o-orange")}">π</text>
+        <text x="256" y="360" font-family="DejaVu Sans, system-ui, sans-serif" font-weight="bold" font-size="280" text-anchor="middle" fill="${color("--o-orange")}">P</text>
     </svg>`;
 }
 

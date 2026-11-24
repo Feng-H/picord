@@ -43,6 +43,8 @@ export interface User {
     role: Role;
     /** sha256 of the user's login token; the token itself is only kept for the owner. */
     tokenHash: string;
+    /** scrypt hash of the user's password; absent if only token auth is enabled. */
+    passwordHash?: string;
     createdAt: number;
     lastSeen?: number;
     /** Conversation ids of the only sessions this person may open; absent means every session. */
@@ -384,7 +386,50 @@ export class ConfigStore {
         return this.#config.users.find((user) => user.id === id);
     }
 
-    addUser(name: string, role: Role, sessions?: string[]): { user: User; token: string } {
+    userByName(name: string): User | undefined {
+        const clean = name.trim().toLowerCase();
+
+        return this.#config.users.find((user) => user.name.trim().toLowerCase() === clean);
+    }
+
+    setPassword(userId: string, passwordHash: string): boolean {
+        const user = this.userById(userId);
+
+        if (user === undefined) {
+            return false;
+        }
+
+        user.passwordHash = passwordHash;
+        this.save();
+
+        return true;
+    }
+
+    issueUserToken(userId: string): string | undefined {
+        const user = this.userById(userId);
+
+        if (user === undefined) {
+            return undefined;
+        }
+
+        if (user.role === "owner" && this.#config.ownerToken) {
+            return this.#config.ownerToken;
+        }
+
+        const token = newToken();
+
+        user.tokenHash = hashToken(token);
+        this.save();
+
+        return token;
+    }
+
+    addUser(
+        name: string,
+        role: Role,
+        sessions?: string[],
+        passwordHash?: string,
+    ): { user: User; token: string } {
         const token = newToken();
         const user: User = {
             id: randomUUID(),
@@ -393,6 +438,7 @@ export class ConfigStore {
             tokenHash: hashToken(token),
             createdAt: Date.now(),
             ...(sessions === undefined ? {} : { sessions: [...sessions] }),
+            ...(passwordHash === undefined ? {} : { passwordHash }),
         };
 
         this.#config.users.push(user);

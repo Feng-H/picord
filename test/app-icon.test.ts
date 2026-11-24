@@ -30,7 +30,7 @@ test("the icon is drawn in the palette's colors", () => {
 
     assert.match(svg, /fill="#000000"/, "the card is the palette's background");
     assert.match(svg, /fill="#070707"/, "the frame around it is the darker background");
-    assert.match(svg, /fill="#b9b9b9"/, "the π is the palette's orange");
+    assert.match(svg, /fill="#b9b9b9"/, "the P is the palette's orange");
     assert.doesNotMatch(
         svg,
         /#ff9e64|#33ccff|#00ff99|#1a1b26|#13141c/,
@@ -45,7 +45,7 @@ test("two palettes give two icons", () => {
 test("a palette that lacks a color keeps the app's own icon color there", () => {
     const svg = iconSvg({ ...vantablack, "--o-orange": undefined as unknown as string });
 
-    assert.match(svg, /fill="#ff9e64"/, "the π falls back to the app's orange");
+    assert.match(svg, /fill="#ff9e64"/, "the P falls back to the app's orange");
     assert.doesNotMatch(svg, /undefined/);
 });
 

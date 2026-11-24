@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { ConfigStore, Role, User } from "./config.ts";
+import { verifyPassword } from "./password.ts";
 
 export const COOKIE = "pocket_auth";
 
@@ -188,6 +189,88 @@ export class Auth {
             clean,
             invite.role,
             invite.session === undefined ? undefined : [invite.session],
+        );
+    }
+
+    /**
+     * Authenticate a user by username and password. Returns user and bearer token on success.
+     */
+    async verifyCredentials(
+        username: string,
+        password: string,
+    ): Promise<{ user: User; token: string } | undefined> {
+        const clean = username.trim();
+
+        if (!clean || !password) {
+            return undefined;
+        }
+
+        const user = this.#config.userByName(clean);
+
+        if (user === undefined || user.passwordHash === undefined) {
+            return undefined;
+        }
+
+        const valid = await verifyPassword(password, user.passwordHash);
+
+        if (!valid) {
+            return undefined;
+        }
+
+        const token = this.#config.issueUserToken(user.id);
+
+        if (token === undefined) {
+            return undefined;
+        }
+
+        return { user, token };
+    }
+
+    /**
+     * Spend an invite to register a new user with username and password.
+     */
+    redeemWithPassword(
+        code: string,
+        name: string,
+        passwordHash: string,
+    ): { user: User; token: string } | undefined {
+        const clean = name.replace(/\s+/g, " ").trim().slice(0, 40);
+
+        if (!clean) {
+            return undefined;
+        }
+
+        // Prevent duplicate username
+        if (this.#config.userByName(clean) !== undefined) {
+            return undefined;
+        }
+
+        const invite = this.#config.invite(code);
+
+        if (invite === undefined) {
+            return undefined;
+        }
+
+        // The person who made it must still be allowed to: not removed, not view only, not limited to one session.
+        const creator = this.#config.userById(invite.createdBy);
+
+        if (creator === undefined || creator.role === "viewer" || creator.sessions !== undefined) {
+            return undefined;
+        }
+
+        if (invite.role === "owner") {
+            return undefined;
+        }
+
+        if (!this.#config.removeInvite(code)) {
+            return undefined;
+        }
+
+        return this.#config.addUser(
+            clean,
+            invite.role,
+            invite.session === undefined ? undefined : [invite.session],
+            passwordHash,
         );
     }
 }
