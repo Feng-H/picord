@@ -859,11 +859,8 @@ export class Room {
             turns: this.turns,
             decisions: this.decisions,
             plan: this.plan,
-            schedules: Object.values(this.schedules)
-                .sort((a, b) => a.next - b.next)
-                // `every` and `zone` as data too, for the Schedules sheet's editor, and `version`, which each edit
-                // changes (a pause does not), so a save made from an older copy is refused instead of undoing that edit.
-                .map(
+            schedules: [
+                ...Object.values(this.schedules).map(
                     ({
                         id,
                         text,
@@ -891,6 +888,11 @@ export class Room {
                         ...(paused === undefined ? {} : { paused: paused.at, pausedBy: paused.by }),
                     }),
                 ),
+                ...(this.#app.ruleEngine?.activeSchedulesForSession(
+                    this.id,
+                    this.#app.channels?.get(this.id)?.name,
+                ) ?? []),
+            ].sort((a, b) => a.next - b.next),
             // What a Stop held: each message's start and who wrote it, as the queue shows them.
             held: this.held.map((item) => ({
                 key: item.key,

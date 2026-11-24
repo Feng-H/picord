@@ -141,6 +141,11 @@ import {
 } from "./room.ts";
 import { whyUnanswered } from "./subagent-runs.ts";
 import { Schedules } from "./schedules.ts";
+import {
+    ConversationRuleEngine,
+    FileRuleEngineStore,
+    loadDefaultRules,
+} from "./rule-engine/index.ts";
 import { CoreSecrets } from "./secrets.ts";
 import { BackgroundTasks } from "./background.ts";
 import { SessionCleanup } from "./session-cleanup.ts";
@@ -446,6 +451,9 @@ export class PocketApp {
     readonly channels: ChannelManager;
     /** History search engine: decoupled, channel-first transcript search with incremental caching. */
     readonly historySearch: HistorySearchEngine;
+    /** Conversation rule engine: deterministic silence triggers and automation. */
+    readonly ruleEngine: ConversationRuleEngine;
+    #ruleTickTimer: NodeJS.Timeout | undefined;
     /** Each person's favorite working folders, shared by their devices. */
     readonly folderFavorites = new FolderFavorites(this);
     /** Artifacts published to anyone with their address (`share.ts`), which needs no sign-in. */
@@ -816,6 +824,24 @@ export class PocketApp {
                 return page.items;
             },
         });
+
+        const ruleStore = new FileRuleEngineStore(this.dataDir);
+        const rules = loadDefaultRules(this.dataDir, process.cwd());
+
+        this.ruleEngine = new ConversationRuleEngine({
+            rules,
+            store: ruleStore,
+            onDispatch: (task) => {
+                this.#log(`rule-engine dispatched task: ${task.ruleId} for channel ${task.channel}`);
+            },
+        });
+
+        this.#ruleTickTimer = setInterval(() => {
+            void this.ruleEngine.tick().catch((err: unknown) => {
+                this.#log(`rule-engine tick error: ${String(err)}`);
+            });
+        }, 60_000);
+        this.#ruleTickTimer.unref();
     }
 
     /**
@@ -4461,6 +4487,12 @@ export class PocketApp {
     close(): Promise<void> {
         this.#closing ??= (async () => {
             clearTimeout(this.#sessionsTimer);
+
+            if (this.#ruleTickTimer) {
+                clearInterval(this.#ruleTickTimer);
+                this.#ruleTickTimer = undefined;
+            }
+
             this.alerts.close();
             this.themes.close();
             await this.cacheKeeper.close();

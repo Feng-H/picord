@@ -1,3 +1,6 @@
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+
 /**
  * Conversation Rule Engine
  *
@@ -117,6 +120,79 @@ export class InMemoryRuleEngineStore implements RuleEngineStore {
     saveState(ruleId: string, state: RuleRuntimeState): void {
         this.#states.set(ruleId, { ...state });
     }
+}
+
+export class FileRuleEngineStore implements RuleEngineStore {
+    readonly #file: string;
+    #states: Record<string, RuleRuntimeState> = {};
+
+    constructor(dataDirectory: string) {
+        this.#file = join(dataDirectory, "rule-states.json");
+
+        try {
+            if (existsSync(this.#file)) {
+                this.#states = JSON.parse(readFileSync(this.#file, "utf8")) as Record<string, RuleRuntimeState>;
+            }
+        } catch {
+            this.#states = {};
+        }
+    }
+
+    getState(ruleId: string): RuleRuntimeState | undefined {
+        const state = this.#states[ruleId];
+
+        return state ? { ...state } : undefined;
+    }
+
+    saveState(ruleId: string, state: RuleRuntimeState): void {
+        this.#states[ruleId] = { ...state };
+
+        try {
+            writeFileSync(this.#file, JSON.stringify(this.#states, null, 2), "utf8");
+        } catch {}
+    }
+}
+
+export function loadDefaultRules(dataDir?: string, projectDir?: string): ConversationRule[] {
+    const candidatePaths: string[] = [];
+
+    if (projectDir) {
+        candidatePaths.push(join(projectDir, ".dialogue-session", "rules.json"));
+    }
+
+    if (dataDir) {
+        candidatePaths.push(join(dataDir, "rules.json"));
+    }
+
+    for (const file of candidatePaths) {
+        if (existsSync(file)) {
+            try {
+                const parsed = JSON.parse(readFileSync(file, "utf8"));
+                const list = Array.isArray(parsed) ? parsed : parsed.rules;
+
+                if (Array.isArray(list) && list.length > 0) {
+                    return list as ConversationRule[];
+                }
+            } catch {}
+        }
+    }
+
+    // Default built-in rule for smalltalk channel
+    return [
+        {
+            id: "smalltalk-card-summary",
+            title: "卡片整理倒计时",
+            channel: "smalltalk",
+            on: "silence",
+            after: "60m",
+            cursor: { type: "entry_id" },
+            action: {
+                type: "prompt",
+                instruction: "读取增量对话并整理为卢曼卡片推送至 #zk-review",
+                forwardToChannel: "zk-review",
+            },
+        },
+    ];
 }
 
 export interface ConversationRuleEngineOptions {
@@ -255,6 +331,71 @@ export class ConversationRuleEngine {
         }
 
         return dispatched;
+    }
+
+    /**
+     * Project active silence triggers for a specific session ID or channel name.
+     * Matches either rule.channel === channelName (case-insensitive) OR rule.channel === String(sessionId).
+     */
+    activeSchedulesForSession(
+        sessionId: number | string,
+        channelName?: string,
+        now = Date.now(),
+    ): Array<{
+        id: string;
+        version: string;
+        text: string;
+        next: number;
+        createdAt: number;
+        isRule: boolean;
+    }> {
+        const cleanChannel = channelName?.replace(/^#/, "").toLowerCase();
+        const strId = String(sessionId);
+        const results: Array<{
+            id: string;
+            version: string;
+            text: string;
+            next: number;
+            createdAt: number;
+            isRule: boolean;
+        }> = [];
+
+        for (const rule of this.#rules) {
+            const ruleTarget = rule.channel.replace(/^#/, "").toLowerCase();
+            const matchesChannel = cleanChannel !== undefined && ruleTarget === cleanChannel;
+            const matchesId = rule.channel === strId;
+
+            if (!matchesChannel && !matchesId) {
+                continue;
+            }
+
+            const state = this.getState(rule.id);
+
+            if (!state || state.lastActivity === undefined) {
+                continue;
+            }
+
+            const notYetFired =
+                state.lastFiredAt === undefined || state.lastFiredAt < state.lastActivity;
+
+            if (!notYetFired) {
+                continue;
+            }
+
+            const afterMs = parseDuration(rule.after);
+            const next = state.lastActivity + afterMs;
+
+            results.push({
+                id: `rule:${rule.id}`,
+                version: "1",
+                text: rule.title || rule.id,
+                next,
+                createdAt: state.lastActivity,
+                isRule: true,
+            });
+        }
+
+        return results;
     }
 
     /**

@@ -1041,6 +1041,16 @@ export class Commands {
         const titled = app.hidden.replace(typed === "" ? said : typed, id);
 
         await this.#touched(id, titled, text === titled || text === "" ? undefined : text);
+
+        // Zero-LLM Activity Capture for Conversation Rule Engine
+        const channel = app.channels?.get(id);
+
+        if (channel?.name) {
+            app.ruleEngine?.touch(channel.name, Date.now(), submission.id);
+        }
+
+        app.ruleEngine?.touch(String(id), Date.now(), submission.id);
+
         this.#reportUnanswered(id, submission.wait(context));
 
         if (failure !== undefined) {
