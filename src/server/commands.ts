@@ -860,7 +860,11 @@ export class Commands {
             beforeSubmit(): Promise<{ user: User; context: Context }>;
             afterSubmit(): void;
         },
-    ): Promise<{ submissionId: SubmissionId; requestId: string }> {
+    ): Promise<{
+        submissionId: SubmissionId;
+        requestId: string;
+        wait?: Promise<unknown>;
+    }> {
         const app = this.#app;
 
         app.requireSee(user, id);
@@ -1051,7 +1055,9 @@ export class Commands {
 
         app.ruleEngine?.touch(String(id), Date.now(), submission.id);
 
-        this.#reportUnanswered(id, submission.wait(context));
+        const wait = submission.wait(context);
+
+        this.#reportUnanswered(id, wait);
 
         if (failure !== undefined) {
             await this.#followFailure(id, user, failure, requestId);
@@ -1069,7 +1075,7 @@ export class Commands {
             });
         }
 
-        return { submissionId: submission.id, requestId };
+        return { submissionId: submission.id, requestId, wait };
     }
 
     /** Submissions `message.sent` went out for lately: a retry that raced its first try finds its id here. */

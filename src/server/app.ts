@@ -145,7 +145,11 @@ import {
     ConversationRuleEngine,
     FileRuleEngineStore,
     loadDefaultRules,
+    formatRulePrompt,
+    appendSummarizedMarker,
+    type DispatchedTask,
 } from "./rule-engine/index.ts";
+import { entryWords } from "./history-search.ts";
 import { CoreSecrets } from "./secrets.ts";
 import { BackgroundTasks } from "./background.ts";
 import { SessionCleanup } from "./session-cleanup.ts";
@@ -833,6 +837,9 @@ export class PocketApp {
             store: ruleStore,
             onDispatch: (task) => {
                 this.#log(`rule-engine dispatched task: ${task.ruleId} for channel ${task.channel}`);
+                void this.handleRuleDispatchedTask(task).catch((err: unknown) => {
+                    this.#log(`rule-engine task execution error: ${String(err)}`);
+                });
             },
         });
 
@@ -4560,6 +4567,108 @@ export class PocketApp {
         })();
 
         return this.#closing;
+    }
+
+    /**
+     * Executes a dispatched rule task: injects deterministic turn with SQLite entry boundaries,
+     * awaits completion, advances entry cursor, forwards results to target channel via ChannelPost,
+     * and appends human-readable >>>SUMMARIZED<<< marker.
+     */
+    async handleRuleDispatchedTask(task: DispatchedTask): Promise<void> {
+        const channel = this.channels?.get(task.channel);
+
+        if (!channel) {
+            this.#log(`rule-engine: target channel not found for ${task.channel}`);
+
+            return;
+        }
+
+        const meta = this.sessionMeta(channel.id);
+        const user = this.config.userById(meta?.createdBy ?? "") ?? this.config.users[0];
+
+        if (!user) {
+            this.#log(`rule-engine: no user found for channel ${task.channel}`);
+
+            return;
+        }
+
+        // Query unsummarized entries
+        const { entries, last } = await this.transcripts.entriesAfter(
+            channel.id,
+            task.cursorEntryId ?? 0,
+            false,
+        );
+
+        if (entries.length === 0) {
+            this.#log(
+                `rule-engine: no new entries to summarize for #${channel.name} since cursor ${String(task.cursorEntryId)}`,
+            );
+
+            return;
+        }
+
+        const headEntryId = Math.max(task.headEntryId ?? 0, last);
+        const prompt = formatRulePrompt(task, task.cursorEntryId ?? 0, headEntryId);
+
+        this.#log(
+            `rule-engine: injecting prompt into channel #${channel.name} (${String(task.cursorEntryId ?? 0)}, ${String(headEntryId)}]`,
+        );
+
+        const submitted = await this.commands.submit(
+            channel.id,
+            user,
+            { text: prompt, requestId: randomUUID() },
+            `rule:${task.ruleId}`,
+        );
+
+        if (submitted.wait) {
+            const settled = (await submitted.wait) as
+                | {
+                      status?: string;
+                      type?: string;
+                      answer?: number;
+                  }
+                | undefined;
+
+            if (settled && settled.status !== "unanswered") {
+                // Advance cursor monotonically
+                this.ruleEngine.advanceCursor(task.ruleId, headEntryId);
+                this.#log(`rule-engine: advanced cursor for ${task.ruleId} to ${String(headEntryId)}`);
+
+                // Automated dispatch of summary to destination channel via ChannelPost
+                if (task.forwardToChannel && settled.type === "input" && settled.answer !== undefined) {
+                    try {
+                        const answerRecord = await this.transcripts.visibleEntry(
+                            channel.id,
+                            settled.answer,
+                        );
+
+                        if (answerRecord) {
+                            const answerText = entryWords(answerRecord).text;
+
+                            if (answerText.trim() !== "") {
+                                await this.channels.post(channel.id, task.forwardToChannel, answerText.trim());
+                                this.#log(`rule-engine: forwarded summary to #${task.forwardToChannel}`);
+                            }
+                        }
+                    } catch (err: unknown) {
+                        this.#log(`rule-engine forward error: ${String(err)}`);
+                    }
+                }
+
+                // Preservation of human-readable >>>SUMMARIZED<<< marker in markdown archive
+                if (task.archiveFile) {
+                    try {
+                        const targetPath = join(process.cwd(), task.archiveFile);
+
+                        appendSummarizedMarker(targetPath);
+                        this.#log(`rule-engine: appended >>>SUMMARIZED<<< to ${targetPath}`);
+                    } catch (err: unknown) {
+                        this.#log(`rule-engine archive marker error: ${String(err)}`);
+                    }
+                }
+            }
+        }
     }
 }
 

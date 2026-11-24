@@ -12,6 +12,8 @@ export interface PromptRuleAction {
     type: "prompt";
     instruction: string;
     forwardToChannel?: string;
+    archiveFile?: string;
+    summarizedMarker?: boolean;
 }
 
 export type RuleAction = PromptRuleAction;
@@ -35,6 +37,8 @@ export interface RuleRuntimeState {
     lastActivity?: number;
     lastFiredAt?: number;
     cursorEntryId?: number;
+    headEntryId?: number;
+    lastTaskSubmissionId?: string;
 }
 
 export interface DispatchedTask {
@@ -42,7 +46,9 @@ export interface DispatchedTask {
     channel: string;
     instruction: string;
     cursorEntryId?: number;
+    headEntryId?: number;
     forwardToChannel?: string;
+    archiveFile?: string;
     triggeredAt: number;
 }
 
@@ -100,6 +106,53 @@ export function parseDuration(duration: string | number): number {
         default:
             throw new Error(`Unknown duration unit: ${unit}`);
     }
+}
+
+/**
+ * Format a human-readable >>>SUMMARIZED<<< marker with timestamp.
+ */
+export function formatSummarizedMarker(date: Date | number = new Date()): string {
+    const d = typeof date === "number" ? new Date(date) : date;
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    const hours = String(d.getHours()).padStart(2, "0");
+    const minutes = String(d.getMinutes()).padStart(2, "0");
+
+    return `>>>SUMMARIZED<<< ${year}-${month}-${day} ${hours}:${minutes}`;
+}
+
+/**
+ * Append human-readable >>>SUMMARIZED<<< marker to a Markdown archive file.
+ */
+export function appendSummarizedMarker(filePath: string, date: Date | number = new Date()): void {
+    const marker = formatSummarizedMarker(date);
+    const content = existsSync(filePath) ? readFileSync(filePath, "utf8") : "";
+    const separator = content.length > 0 && !content.endsWith("\n") ? "\n" : "";
+
+    writeFileSync(filePath, `${content}${separator}${marker}\n`, "utf8");
+}
+
+/**
+ * Format system prompt for an injected rule task specifying entry range boundary.
+ */
+export function formatRulePrompt(
+    task: DispatchedTask,
+    cursorEntryId = task.cursorEntryId ?? 0,
+    headEntryId = task.headEntryId ?? 0,
+): string {
+    const lines: string[] = [
+        `[系统规则触发：${task.ruleId}]`,
+        `本轮总结处理范围：SQLite entry_id (${cursorEntryId}, ${headEntryId}]。`,
+        "请严格只处理此增量区间内的对话内容。",
+        task.instruction,
+    ];
+
+    if (task.forwardToChannel) {
+        lines.push(`总结成果将自动投递至 #${task.forwardToChannel.replace(/^#/, "")} 频道。`);
+    }
+
+    return lines.join("\n");
 }
 
 export interface RuleEngineStore {
@@ -190,6 +243,7 @@ export function loadDefaultRules(dataDir?: string, projectDir?: string): Convers
                 type: "prompt",
                 instruction: "读取增量对话并整理为卢曼卡片推送至 #zk-review",
                 forwardToChannel: "zk-review",
+                archiveFile: ".dialogue-session/viewpoints.md",
             },
         },
     ];
@@ -280,13 +334,36 @@ export class ConversationRuleEngine {
                 current.lastActivity = timestamp;
 
                 if (entryId !== undefined) {
-                    // Update entry anchor if needed
+                    const num = Number(entryId);
+
+                    if (Number.isFinite(num)) {
+                        current.headEntryId = Math.max(current.headEntryId ?? 0, num);
+                    }
                 }
 
                 this.#states.set(rule.id, current);
                 this.#store.saveState(rule.id, current);
             }
         }
+    }
+
+    /**
+     * Advance the processed cursor entry ID monotonically.
+     * Rejects backwards or equal movements to guarantee strictly increasing progression.
+     */
+    advanceCursor(ruleId: string, newCursorId: number): boolean {
+        const current = this.getState(ruleId) ?? {};
+        const prev = current.cursorEntryId ?? 0;
+
+        if (newCursorId > prev) {
+            current.cursorEntryId = newCursorId;
+            this.#states.set(ruleId, current);
+            this.#store.saveState(ruleId, current);
+
+            return true;
+        }
+
+        return false;
     }
 
     /**
@@ -318,7 +395,9 @@ export class ConversationRuleEngine {
                     channel: rule.channel,
                     instruction: rule.action.instruction,
                     cursorEntryId: state.cursorEntryId,
+                    headEntryId: state.headEntryId,
                     forwardToChannel: rule.action.forwardToChannel,
+                    archiveFile: rule.action.archiveFile,
                     triggeredAt: now,
                 };
 
