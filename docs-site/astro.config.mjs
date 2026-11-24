@@ -33,8 +33,8 @@ const sidebar = SIDEBAR.map(({ label, collapsed, items }) => ({
 }));
 
 export default defineConfig({
-    site: "https://tannermidd.github.io",
-    base: "/pi-pocket/docs",
+    site: "https://feng-h.github.io",
+    base: "/picord/docs",
     trailingSlash: "always",
     devToolbar: { enabled: false },
     markdown: {

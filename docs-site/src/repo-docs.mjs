@@ -21,7 +21,7 @@ import { MOVED } from "./sidebar.mjs";
 
 export const REPO = resolve(fileURLToPath(new URL("../../", import.meta.url)));
 export const GITHUB = "https://github.com/Feng-H/picord";
-export const BASE = "/pi-pocket/docs";
+export const BASE = "/picord/docs";
 
 /** The commit code links point at: DOCS_REF, or this checkout's. */
 export const REF =
