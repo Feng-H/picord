@@ -463,6 +463,16 @@ const COMMANDS = [
     },
     { name: "settings", description: "Open the menu", run: () => openSheet({ type: "menu" }) },
     {
+        name: "notify",
+        description: "Notifications on this device",
+        run: () => openSheet({ type: "notifications" }),
+    },
+    {
+        name: "notifications",
+        description: "Notifications on this device",
+        run: () => openSheet({ type: "notifications" }),
+    },
+    {
         name: "trust",
         description: "Whether Pi trusts this project, for its own skills",
         available: trustAvailable,

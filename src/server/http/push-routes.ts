@@ -80,8 +80,11 @@ export async function pushRoutes(api: ApiRequest, action: string | undefined): P
             url: "/",
             tag: "test",
         };
+        const publicUrl = process.env.PI_POCKET_PUBLIC_URL?.trim();
+        const configuredUrl = publicUrl && publicUrl.startsWith("https://") ? publicUrl : undefined;
+        const subject = configuredUrl ?? (app.access?.url?.startsWith("https://") ? app.access.url : undefined);
         const sent =
-            (await store.notify(user.id, test)) +
+            (await store.notify(user.id, test, { ...(subject === undefined ? {} : { subject }) })) +
             app.notifyEmbedders(user.id, { ...test, urgency: "normal" });
 
         if (sent === 0) {

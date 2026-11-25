@@ -13,6 +13,8 @@ import { join } from "node:path";
 import { Readable } from "node:stream";
 import { test } from "node:test";
 import {
+    defaultSubject,
+    DEFAULT_SUBJECT,
     encryptPayload,
     generateVapidKeys,
     PushStore,
@@ -311,4 +313,25 @@ test("every push kind, the limit wait too, can be turned off through the prefs r
         [JSON.parse(answer).prefs.limit, JSON.parse(answer).prefs.done, store.prefs("u").limit],
         [false, false, false],
     );
+});
+
+test("defaultSubject resolves to PI_POCKET_PUBLIC_URL when configured with https", () => {
+    const original = process.env.PI_POCKET_PUBLIC_URL;
+
+    try {
+        delete process.env.PI_POCKET_PUBLIC_URL;
+        assert.equal(defaultSubject(), DEFAULT_SUBJECT);
+
+        process.env.PI_POCKET_PUBLIC_URL = "http://example.com";
+        assert.equal(defaultSubject(), DEFAULT_SUBJECT);
+
+        process.env.PI_POCKET_PUBLIC_URL = "https://bot.851127.xyz";
+        assert.equal(defaultSubject(), "https://bot.851127.xyz");
+    } finally {
+        if (original === undefined) {
+            delete process.env.PI_POCKET_PUBLIC_URL;
+        } else {
+            process.env.PI_POCKET_PUBLIC_URL = original;
+        }
+    }
 });

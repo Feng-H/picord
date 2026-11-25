@@ -63,7 +63,14 @@ export type EmbedderMessage = PushMessage & {
     approval?: { id: string; allow: boolean; may: boolean; call: string };
 };
 
-const DEFAULT_SUBJECT = "mailto:pi-pocket@example.com";
+export const DEFAULT_SUBJECT = "mailto:pi-pocket@example.com";
+
+export function defaultSubject(): string {
+    const publicUrl = process.env.PI_POCKET_PUBLIC_URL?.trim();
+
+    return publicUrl && publicUrl.startsWith("https://") ? publicUrl : DEFAULT_SUBJECT;
+}
+
 const DEFAULT_RECORD_SIZE = 4096;
 const MAX_BODY = 1000;
 const MAX_TITLE = 200;
@@ -251,7 +258,7 @@ export async function sendPush(
         Authorization: vapidAuthorization(
             subscription.endpoint,
             vapid,
-            options.subject ?? DEFAULT_SUBJECT,
+            options.subject ?? defaultSubject(),
         ),
     };
 

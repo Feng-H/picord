@@ -410,7 +410,9 @@ export class PocketApp {
         return presentedBuild(this.#code, this.webs.presentations());
     }
     /** Set by the launcher over IPC; undefined when the server runs on its own. */
-    access: AccessInfo | undefined;
+    access: AccessInfo | undefined = process.env.PI_POCKET_PUBLIC_URL?.trim()?.startsWith("https://")
+        ? { mode: "custom", label: "public url", url: process.env.PI_POCKET_PUBLIC_URL.trim() }
+        : undefined;
     harness!: Harness;
     models!: ModelRuntime;
     settings!: SettingsManager;
@@ -3597,11 +3599,16 @@ export class PocketApp {
      * tunnel can never sign in again (its address is gone, and their cookie works only there), so they are removed.
      */
     setReach(access: AccessInfo | undefined): void {
-        this.access = access;
+        const publicUrl = process.env.PI_POCKET_PUBLIC_URL?.trim();
+        const effectiveAccess = publicUrl && publicUrl.startsWith("https://")
+            ? (access ? { ...access, url: access.url ?? publicUrl } : { mode: "custom", label: "public url", url: publicUrl })
+            : access;
+
+        this.access = effectiveAccess;
         let current: string | undefined;
 
         try {
-            current = access?.url === undefined ? undefined : new URL(access.url).host;
+            current = effectiveAccess?.url === undefined ? undefined : new URL(effectiveAccess.url).host;
         } catch {}
 
         for (const user of [...this.config.users]) {
