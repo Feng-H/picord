@@ -1,11 +1,55 @@
 // Pi Pocket's service worker. It shows push notifications (Pi finished, an approval, a chat message), answers an
 // approval from its notification, opens the right session when one is tapped, and hands things shared to Pi Pocket
-// from other apps to the page. It caches none of the app: the app is edited live.
-self.addEventListener("install", () => self.skipWaiting());
-self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
+// from other apps to the page. It caches static shell assets to provide instant startup, while updating in background.
 
+const SHELL_CACHE = "picord-shell-v2";
 /** Where shared things wait until the page picks them up; see `web/share.js`. */
 const SHARE_CACHE = "pocket-share";
+
+const CORE_ASSETS = [
+    "/",
+    "/style.css",
+    "/app.js",
+    "/vendor/preact.mjs",
+    "/vendor/preact-hooks.mjs",
+    "/vendor/htm.mjs",
+    "/vendor/marked.mjs",
+    "/vendor/purify.mjs",
+    "/icon.svg",
+    "/icon-192.png",
+    "/icon-maskable-512.png",
+    "/favicon.svg",
+    "/favicon.ico",
+    "/manifest.webmanifest",
+    "/fonts/Geist.woff2",
+    "/fonts/JetBrainsMono.woff2",
+];
+
+self.addEventListener("install", (event) => {
+    self.skipWaiting();
+    event.waitUntil(
+        caches.open(SHELL_CACHE).then((cache) =>
+            cache.addAll(CORE_ASSETS).catch(() => {
+                // Non-critical failures on individual assets do not abort install
+            }),
+        ),
+    );
+});
+
+self.addEventListener("activate", (event) => {
+    event.waitUntil(
+        Promise.all([
+            self.clients.claim(),
+            caches.keys().then((keys) =>
+                Promise.all(
+                    keys
+                        .filter((key) => key.startsWith("picord-shell-") && key !== SHELL_CACHE)
+                        .map((key) => caches.delete(key)),
+                ),
+            ),
+        ]),
+    );
+});
 
 self.addEventListener("push", (event) => {
     let data = {};
@@ -156,6 +200,41 @@ async function receiveShare(request) {
     return Response.redirect(`/?share=${id}`, 303);
 }
 
+async function staleWhileRevalidate(request, fallbackUrl) {
+    const cache = await caches.open(SHELL_CACHE);
+    const cached = await cache.match(fallbackUrl || request);
+
+    const fetchPromise = fetch(request)
+        .then((response) => {
+            if (response && response.status === 200) {
+                cache.put(fallbackUrl || request, response.clone());
+            }
+
+            return response;
+        })
+        .catch(() => undefined);
+
+    if (cached) {
+        return cached;
+    }
+
+    const fetched = await fetchPromise;
+
+    if (fetched) {
+        return fetched;
+    }
+
+    if (fallbackUrl) {
+        const rootCached = await cache.match("/");
+
+        if (rootCached) {
+            return rootCached;
+        }
+    }
+
+    return new Response("Offline", { status: 503, statusText: "Offline" });
+}
+
 self.addEventListener("fetch", (event) => {
     const url = new URL(event.request.url);
 
@@ -165,5 +244,32 @@ self.addEventListener("fetch", (event) => {
         url.pathname === "/share"
     ) {
         event.respondWith(receiveShare(event.request));
+
+        return;
+    }
+
+    if (event.request.method === "GET" && url.origin === self.location.origin) {
+        if (url.pathname.startsWith("/api/")) {
+            return;
+        }
+
+        if (event.request.mode === "navigate") {
+            event.respondWith(staleWhileRevalidate(event.request, "/"));
+
+            return;
+        }
+
+        if (
+            url.pathname.endsWith(".css") ||
+            url.pathname.endsWith(".js") ||
+            url.pathname.endsWith(".mjs") ||
+            url.pathname.endsWith(".woff2") ||
+            url.pathname.endsWith(".svg") ||
+            url.pathname.endsWith(".png") ||
+            url.pathname.endsWith(".ico") ||
+            url.pathname.endsWith(".webmanifest")
+        ) {
+            event.respondWith(staleWhileRevalidate(event.request));
+        }
     }
 });

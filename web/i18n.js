@@ -511,6 +511,7 @@ const WORDS = {
         // 通知。
         "Notifications are on for this device.": "此设备已开启通知。",
         "Test sent. It shows as a system notification.": "测试已发送。它会以系统通知的形式出现。",
+        "Picord updated. Reload to apply.": "Picord 已更新，刷新即可应用。",
     },
 };
 

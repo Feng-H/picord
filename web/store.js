@@ -9,6 +9,7 @@ import { fingerprint } from "./text-hash.js";
 import * as disk from "./session-cache.js";
 import { personStorage } from "./person-storage.js";
 import { notesDrafts } from "./notes-drafts.js";
+import { t } from "./i18n.js";
 import {
     keptLayout,
     layoutOf,
@@ -464,7 +465,25 @@ opened(store.state.conversationId);
 function routeConversation() {
     const match = /^\/s\/(\d+)/.exec(location.pathname);
 
-    return match ? Number(match[1]) : null;
+    if (match) {
+        return Number(match[1]);
+    }
+
+    if (location.pathname === "/") {
+        try {
+            const last = localStorage.getItem("pocket.lastSession");
+
+            if (last && /^\d+$/.test(last)) {
+                const id = Number(last);
+
+                history.replaceState(null, "", `/s/${id}`);
+
+                return id;
+            }
+        } catch {}
+    }
+
+    return null;
 }
 
 /** What the route's history entry keeps of the route it was opened over (`navigate`'s `over`), or null. */
@@ -995,6 +1014,8 @@ export function signOut() {
 
         try {
             localStorage.setItem(SIGNED_OUT_KEY, String(Date.now()));
+            localStorage.removeItem("pocket.known");
+            localStorage.removeItem("pocket.lastSession");
         } catch {
             // Storage refused: the other tabs find out at their next request.
         }
@@ -1217,17 +1238,29 @@ function forgetKept() {
 function knownFromPage() {
     const text = document.getElementById("pocket-known")?.textContent;
 
-    if (!text) {
-        return null;
+    if (text) {
+        try {
+            const known = JSON.parse(text);
+
+            if (known?.user?.id && typeof known.build === "string") {
+                return known;
+            }
+        } catch {}
     }
 
     try {
-        const known = JSON.parse(text);
+        const saved = localStorage.getItem("pocket.known");
 
-        return known?.user?.id && typeof known.build === "string" ? known : null;
-    } catch {
-        return null;
-    }
+        if (saved) {
+            const parsed = JSON.parse(saved);
+
+            if (parsed?.user?.id && typeof parsed.build === "string") {
+                return parsed;
+            }
+        }
+    } catch {}
+
+    return null;
 }
 
 /**
@@ -2330,6 +2363,16 @@ export function navigate(
 ) {
     const path = conversationId === null ? "/" : `/s/${conversationId}`;
 
+    if (conversationId !== null) {
+        try {
+            localStorage.setItem("pocket.lastSession", String(conversationId));
+        } catch {}
+    } else {
+        try {
+            localStorage.removeItem("pocket.lastSession");
+        } catch {}
+    }
+
     // A new route says what it is over; the same route keeps what its entry already says.
     const route = location.pathname !== path || store.state.conversationId !== conversationId;
 
@@ -2475,13 +2518,27 @@ export async function start() {
             shownEarly = { id, cached };
         }
 
-        store.set(early ?? {});
+        store.set(early ? { ...early, me: known.user, server: known } : {});
         // Let App's queued render replace the static boot screen before revealing a checked transcript.
         queueMicrotask(() => document.getElementById("app")?.removeAttribute("hidden"));
         const hello = await answer;
 
         if (!acceptPerson(hello.user, generation)) {
             return;
+        }
+
+        try {
+            localStorage.setItem(
+                "pocket.known",
+                JSON.stringify({ user: hello.user, build: hello.server?.build ?? "" }),
+            );
+        } catch {}
+
+        const buildChanged =
+            known?.build && hello.server?.build && known.build !== hello.server.build;
+
+        if (buildChanged) {
+            notify("info", t("Picord updated. Reload to apply."));
         }
 
         store.set({
