@@ -116,4 +116,18 @@ _Avoid_: Message offset, checkpoint, read pointer.
 **Rule Action Pipeline**:
 A deterministic sequence of steps initiated when a trigger fires, injecting an actionable instruction turn into the source channel and optionally piping results to target channels.
 _Avoid_: Task flow, macro, webhook hook.
+
+## Turn Pipeline
+
+**Turn Pipeline**:
+The encapsulated server subsystem responsible for turn admission, multimodal media enrichment (audio speech-to-text, images, quotes), slash command resolution, and durable execution dispatch.
+_Avoid_: Message handler, submit worker, prompt middleware.
+
+**Steering Directive**:
+An explicit control tag (such as `/steer`) attached to a message turn that grants authorized actors the capability to halt and redirect an ongoing agent response.
+_Avoid_: Force prompt, abort signal, break command.
+
+**Local Command Registry**:
+A decoupled dispatch table mapping prefix commands (such as `/rule`, `/help`, or `/status`) to immediate, zero-token local handlers, preventing hardcoded command branches within turn execution.
+_Avoid_: Switch block, command filter, regex router.
 _Avoid_: Pi icon, math logo, default favicon.

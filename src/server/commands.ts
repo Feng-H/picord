@@ -73,6 +73,7 @@ import { MAX_STT, sttConfigured, transcribeAudio } from "./stt.ts";
 import { isThinkingLevel, THINKING_LEVELS } from "./models.ts";
 import { writePiSession } from "./pi-sessions.ts";
 import { snippet } from "./projection.ts";
+import { SteeringPolicy } from "./turn-pipeline/index.ts";
 import { type QuoteOrigin, validateQuotes, formatQuoteContextBlock } from "./quote-provenance.ts";
 import {
     globalModelSettings,
@@ -877,36 +878,24 @@ export class Commands {
         }
 
         const conversation = await app.conversation(id);
-        const typed = request.text.trim();
+        let typed = request.text.trim();
 
-        if (typed === "/rule" || typed.startsWith("/rule ")) {
-            const reply = app.executeRuleCommand(typed);
-            const model = [
-                {
-                    role: "user" as const,
-                    content: [{ type: "text" as const, text: `[rule] ${reply}` }],
-                    timestamp: Date.now(),
-                },
-            ];
+        // 1. Decoupled Local Command Registry (via TurnPipeline)
+        const localCommand = app.turnPipeline.registry.resolve(typed);
 
-            await conversation.submit(
-                {
-                    type: "write",
-                    entry: {
-                        kind: NOTE_ENTRY,
-                        data: { text: reply, by: user.id, name: "Rule Engine" },
-                        model,
-                    },
-                    requestId: ownRequest(user.id, `rule-${randomUUID()}`),
-                },
-                context,
-            );
-
-            return {
-                submissionId: `rule-${Date.now()}` as unknown as SubmissionId,
-                requestId: request.requestId ?? randomUUID(),
-            };
+        if (localCommand !== undefined) {
+            return await app.turnPipeline.submit(id, user, request, { via, admission });
         }
+
+        // 2. Evaluate steering directive and permission gate
+        const steering = new SteeringPolicy().evaluate({
+            text: typed,
+            mode: request.mode,
+            actor: user,
+        });
+
+        typed = steering.cleanedText;
+        const whenBusy = steering.whenBusy;
 
         // `/skill:name request` sends the skill with the request; `/name arguments`, Pi's prompt template of that name.
         const expanded = typed.startsWith("/skill:")
@@ -1038,7 +1027,7 @@ export class Commands {
                           {
                               type: "input",
                               content,
-                              whenBusy: request.mode === "steer" ? "steer" : "followUp",
+                              whenBusy,
                               requestId,
                           },
                           submitContext,

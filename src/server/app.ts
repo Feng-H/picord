@@ -153,6 +153,7 @@ import {
     type DispatchedTask,
     type ConversationRule,
 } from "./rule-engine/index.ts";
+import { TurnPipeline } from "./turn-pipeline/index.ts";
 import { entryWords } from "./history-search.ts";
 import { CoreSecrets } from "./secrets.ts";
 import { BackgroundTasks } from "./background.ts";
@@ -461,6 +462,8 @@ export class PocketApp {
     readonly historySearch: HistorySearchEngine;
     /** Conversation rule engine: deterministic silence triggers and automation. */
     readonly ruleEngine: ConversationRuleEngine;
+    /** Turn pipeline: decoupled command registry, media ingestion, and execution. */
+    readonly turnPipeline: TurnPipeline;
     #ruleTickTimer: NodeJS.Timeout | undefined;
     #ruleWatcherCleaner: (() => void) | undefined;
     /** Each person's favorite working folders, shared by their devices. */
@@ -868,6 +871,20 @@ export class PocketApp {
             } catch (err: unknown) {
                 this.#log(`rule-engine: failed to hot reload rules from ${file}: ${String(err)}`);
             }
+        });
+
+        this.turnPipeline = new TurnPipeline({
+            conversationLookup: (convId) => this.conversation(convId),
+        });
+
+        this.turnPipeline.registry.register("/rule", (ctx) => {
+            const reply = this.executeRuleCommand(ctx.rawText);
+
+            return {
+                reply,
+                prefixTag: "rule",
+                authorName: "Rule Engine",
+            };
         });
     }
 
