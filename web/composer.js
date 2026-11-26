@@ -58,6 +58,8 @@ import { says } from "./turns.js";
 import {
     MicButton,
     VoiceButton,
+    VoiceLangButton,
+    VoiceOverlay,
     useDictation,
     useVoiceMessage,
     voiceLanguage,
@@ -1519,6 +1521,137 @@ export function Composer() {
     };
 
     const voice = useVoiceMessage((blob) => sendVoice(blob));
+    const [voiceMode, setVoiceMode] = useState(false);
+    const [pressing, setPressing] = useState(false);
+    const [canceling, setCanceling] = useState(false);
+    const [pressSeconds, setPressSeconds] = useState(0);
+    const pressStartRef = useRef({ time: 0, y: 0, timer: null });
+
+    useEffect(() => {
+        return () => {
+            if (pressStartRef.current.timer) {
+                clearInterval(pressStartRef.current.timer);
+                pressStartRef.current.timer = null;
+            }
+        };
+    }, []);
+
+    const onPressStart = (event) => {
+        if (event.button !== undefined && event.button !== 0) {
+            return;
+        }
+
+        event.preventDefault();
+
+        try {
+            event.currentTarget.setPointerCapture(event.pointerId);
+        } catch {
+            // Pointer capture unsupported or failed
+        }
+
+        try {
+            navigator.vibrate?.(40);
+        } catch {}
+
+        const now = Date.now();
+
+        pressStartRef.current = {
+            time: now,
+            y: event.clientY,
+            timer: setInterval(() => {
+                setPressSeconds(Math.max(0, Math.floor((Date.now() - now) / 1000)));
+            }, 200),
+        };
+
+        setPressing(true);
+        setCanceling(false);
+        setPressSeconds(0);
+        voice.start();
+    };
+
+    const onPressMove = (event) => {
+        if (!pressing) {
+            return;
+        }
+
+        const deltaY = pressStartRef.current.y - event.clientY;
+
+        if (deltaY > 50) {
+            if (!canceling) {
+                setCanceling(true);
+
+                try {
+                    navigator.vibrate?.(20);
+                } catch {}
+            }
+        } else if (deltaY <= 40) {
+            if (canceling) {
+                setCanceling(false);
+            }
+        }
+    };
+
+    const onPressEnd = (event) => {
+        if (!pressing) {
+            return;
+        }
+
+        try {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+        } catch {}
+
+        if (pressStartRef.current.timer) {
+            clearInterval(pressStartRef.current.timer);
+            pressStartRef.current.timer = null;
+        }
+
+        const duration = Date.now() - pressStartRef.current.time;
+        const isCancel = canceling;
+
+        setPressing(false);
+        setCanceling(false);
+        setPressSeconds(0);
+
+        if (isCancel) {
+            voice.cancel();
+
+            try {
+                navigator.vibrate?.([20, 50, 20]);
+            } catch {}
+        } else if (duration < 500) {
+            voice.cancel();
+            notify("info", t("Hold to talk: press longer to record"));
+        } else {
+            voice.stop(true);
+        }
+    };
+
+    const onPressCancel = (event) => {
+        if (!pressing) {
+            return;
+        }
+
+        try {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+        } catch {}
+
+        if (pressStartRef.current.timer) {
+            clearInterval(pressStartRef.current.timer);
+            pressStartRef.current.timer = null;
+        }
+
+        const duration = Date.now() - pressStartRef.current.time;
+
+        setPressing(false);
+        setCanceling(false);
+        setPressSeconds(0);
+
+        if (canceling || duration < 500) {
+            voice.cancel();
+        } else {
+            voice.stop(true);
+        }
+    };
 
     const send = async (other = false) => {
         if (!canSend) {
@@ -2606,31 +2739,57 @@ export function Composer() {
                             onRemove=${(block) => removeQuotes([block])}
                         />`
                     }
-                    <textarea
-                        ref=${setBox}
-                        rows="1"
-                        value=${text}
-                        readonly=${sending}
-                        placeholder=${placeholder}
-                        onInput=${(event) => {
-                            setBrowsing(null);
-                            edit(event.currentTarget.value, event.currentTarget.selectionStart);
+                    ${
+                        voiceMode
+                            ? html`<div class="voice-press-wrapper" data-part="voice-press-wrapper">
+                                <button
+                                    type="button"
+                                    class=${`voice-press-bar ${pressing ? "pressing" : ""} ${canceling ? "canceling" : ""}`}
+                                    data-part="voice-press-bar"
+                                    onPointerDown=${onPressStart}
+                                    onPointerMove=${onPressMove}
+                                    onPointerUp=${onPressEnd}
+                                    onPointerCancel=${onPressCancel}
+                                    onContextMenu=${(event) => event.preventDefault()}
+                                >
+                                    <${Icon} name="mic" size=${18} class="voice-press-icon" />
+                                    <span class="voice-press-text">
+                                        ${
+                                            pressing
+                                                ? canceling
+                                                    ? t("Release to cancel")
+                                                    : t("Release to send, slide up to cancel")
+                                                : t("Hold to Talk")
+                                        }
+                                    </span>
+                                </button>
+                            </div>`
+                            : html`<textarea
+                                ref=${setBox}
+                                rows="1"
+                                value=${text}
+                                readonly=${sending}
+                                placeholder=${placeholder}
+                                onInput=${(event) => {
+                                    setBrowsing(null);
+                                    edit(event.currentTarget.value, event.currentTarget.selectionStart);
 
-                            if (event.inputType?.startsWith("history")) {
-                                afterHistory(event.currentTarget);
-                            }
-                        }}
-                        onBeforeInput=${onBeforeInput}
-                        onKeyDown=${onKey}
-                        onKeyUp=${(event) => setCaret(event.currentTarget.selectionStart)}
-                        onClick=${(event) => {
-                            setCaret(event.currentTarget.selectionStart);
-                            setMarked(null);
-                        }}
-                        onFocus=${() => loadFiles({ ifMissing: true })}
-                        onPaste=${onPaste}
-                        enterkeyhint=${coarse ? "enter" : "send"}
-                    ></textarea>
+                                    if (event.inputType?.startsWith("history")) {
+                                        afterHistory(event.currentTarget);
+                                    }
+                                }}
+                                onBeforeInput=${onBeforeInput}
+                                onKeyDown=${onKey}
+                                onKeyUp=${(event) => setCaret(event.currentTarget.selectionStart)}
+                                onClick=${(event) => {
+                                    setCaret(event.currentTarget.selectionStart);
+                                    setMarked(null);
+                                }}
+                                onFocus=${() => loadFiles({ ifMissing: true })}
+                                onPaste=${onPaste}
+                                enterkeyhint=${coarse ? "enter" : "send"}
+                            ></textarea>`
+                    }
                     <div class="composer-row" data-part="composer-tools">
                         ${slotItems("composer", { picker, agent, level, view }).map(({ node }) => node)}
                         <input
@@ -2689,12 +2848,28 @@ export function Composer() {
                         ${busy && html`<${ModePick} mode=${sendMode} onPick=${setSendMode} />`}
                         ${
                             voiceLive
-                                ? html`<${VoiceButton}
-                                        voice=${voice}
-                                        class="composer-mic"
-                                        part="composer-button"
+                                ? html`<span class="voice-live">
+                                    ${voiceMode && html`<${VoiceLangButton} disabled=${sending} />`}
+                                    <button
+                                        type="button"
+                                        class=${`icon-button voice-mode-toggle ${voiceMode ? "on active" : ""} composer-mic`}
+                                        data-part="composer-button voice-mode-toggle"
+                                        aria-label=${voiceMode ? t("Switch to Keyboard") : t("Switch to Voice")}
+                                        title=${voiceMode ? t("Switch to Keyboard") : t("Switch to Voice")}
                                         disabled=${sending}
-                                    />`
+                                        onClick=${() => {
+                                            const next = !voiceMode;
+
+                                            setVoiceMode(next);
+
+                                            if (!next) {
+                                                requestAnimationFrame(() => box.current?.focus());
+                                            }
+                                        }}
+                                    >
+                                        <${Icon} name=${voiceMode ? "keyboard" : "mic"} size=${17} />
+                                    </button>
+                                </span>`
                                 : html`<${MicButton}
                                         dictation=${dictation}
                                         class="composer-mic"
@@ -2702,25 +2877,29 @@ export function Composer() {
                                         disabled=${sending}
                                     />`
                         }
-                        <button
-                            class=${`send-button ${canSend ? "ready" : ""}`}
-                            data-part="send-button"
-                            data-state=${canSend ? "ready" : undefined}
-                            aria-label=${t("Send")}
-                            title=${coarse ? t("Send") : t("Send (Enter)")}
-                            disabled=${!canSend}
-                            onClick=${send}
-                        >
-                            ${
-                                sending
-                                    ? html`<${Spinner} />`
-                                    : html`<${Icon} name="send" size=${16} stroke=${2.4} />`
-                            }
-                        </button>
+                        ${
+                            !voiceMode &&
+                            html`<button
+                                class=${`send-button ${canSend ? "ready" : ""}`}
+                                data-part="send-button"
+                                data-state=${canSend ? "ready" : undefined}
+                                aria-label=${t("Send")}
+                                title=${coarse ? t("Send") : t("Send (Enter)")}
+                                disabled=${!canSend}
+                                onClick=${send}
+                            >
+                                ${
+                                    sending
+                                        ? html`<${Spinner} />`
+                                        : html`<${Icon} name="send" size=${16} stroke=${2.4} />`
+                                }
+                            </button>`
+                        }
                         ${busy && html`<${StopButton} />`}
                     </div>
                 </div>`
         }
+        <${VoiceOverlay} active=${pressing} canceling=${canceling} seconds=${pressSeconds} />
         <${StatusLine} />
     </footer>`;
 }

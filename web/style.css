@@ -5888,6 +5888,191 @@ pre.diff .del {
     }
 }
 
+/* ─── Push-to-Talk (按住说话) ─────────────────────────────────── */
+
+.voice-press-wrapper {
+    padding: calc(6px * var(--space-y)) calc(12px * var(--space-x)) 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.voice-press-bar {
+    width: 100%;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 16px;
+    border-radius: var(--r-control);
+    background: var(--card-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-size: 15px;
+    font-weight: 500;
+    cursor: pointer;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    transition:
+        background-color var(--t-hover) var(--ease-out),
+        border-color var(--t-hover) var(--ease-out),
+        transform 0.1s var(--ease-out);
+}
+
+.voice-press-bar:active,
+.voice-press-bar.pressing {
+    background: var(--shade-2);
+    border-color: var(--accent);
+    transform: scale(0.99);
+}
+
+.voice-press-bar.canceling {
+    background: var(--err-soft);
+    border-color: var(--err);
+    color: var(--err);
+}
+
+.voice-press-icon {
+    flex: none;
+    opacity: 0.85;
+}
+
+.voice-press-text {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.voice-mode-toggle.on {
+    color: var(--accent);
+    background: var(--hover);
+}
+
+/* Floating overlay for mobile push-to-talk */
+.voice-overlay-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    pointer-events: none;
+    animation: voice-fade 0.15s ease-out;
+}
+
+@keyframes voice-fade {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+.voice-overlay-card {
+    width: 170px;
+    min-height: 170px;
+    padding: 20px 16px;
+    border-radius: 20px;
+    background: rgba(28, 28, 30, 0.88);
+    backdrop-filter: blur(25px);
+    -webkit-backdrop-filter: blur(25px);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.45);
+    color: #ffffff;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    transition:
+        background-color 0.15s ease-out,
+        border-color 0.15s ease-out,
+        transform 0.15s ease-out;
+}
+
+.voice-overlay-card.canceling {
+    background: rgba(180, 35, 35, 0.92);
+    border-color: rgba(255, 120, 120, 0.5);
+    transform: scale(1.02);
+}
+
+.voice-overlay-icon-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 6px;
+    height: 44px;
+}
+
+.voice-overlay-waves {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    height: 22px;
+    margin-bottom: 6px;
+}
+
+.voice-overlay-waves .wave {
+    width: 4px;
+    border-radius: 2px;
+    background: currentColor;
+    opacity: 0.85;
+}
+
+.voice-overlay-card:not(.canceling) .wave-1 {
+    height: 10px;
+    animation: voice-wave 0.7s ease-in-out infinite alternate;
+}
+
+.voice-overlay-card:not(.canceling) .wave-2 {
+    height: 20px;
+    animation: voice-wave 0.7s ease-in-out 0.2s infinite alternate;
+}
+
+.voice-overlay-card:not(.canceling) .wave-3 {
+    height: 12px;
+    animation: voice-wave 0.7s ease-in-out 0.4s infinite alternate;
+}
+
+.voice-overlay-card.canceling .voice-overlay-waves {
+    display: none;
+}
+
+@keyframes voice-wave {
+    0% {
+        height: 6px;
+        opacity: 0.4;
+    }
+    100% {
+        height: 22px;
+        opacity: 1;
+    }
+}
+
+.voice-overlay-timer {
+    font: 16px var(--mono);
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    margin-bottom: 6px;
+    letter-spacing: 0.5px;
+}
+
+.voice-overlay-tip {
+    font-size: 13px;
+    line-height: 1.35;
+    opacity: 0.92;
+    padding: 0 4px;
+    font-weight: 500;
+}
+
 /* The interface's tongue, beside the list's New: a small chip that flips between what it speaks. */
 .lang-button {
     flex: none;

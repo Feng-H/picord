@@ -113,6 +113,8 @@ export function useDictation(box, onText, { top = false, place = null, onError =
             recorder: null,
             /** Stop listening: `drop` throws away what is not settled yet, and anything heard after. */
             stop(drop = false) {
+                void releaseWakeLock();
+
                 if (this.recorder) {
                     const recorder = this.recorder;
 
@@ -325,6 +327,7 @@ export function useDictation(box, onText, { top = false, place = null, onError =
                 };
 
                 try {
+                    void requestWakeLock();
                     recognition.start();
                     setListening(true);
                 } catch (error) {
@@ -385,6 +388,7 @@ export function useDictation(box, onText, { top = false, place = null, onError =
                         };
 
                         this.recorder = recorder;
+                        void requestWakeLock();
                         recorder.start();
                         setListening(true);
                     })
@@ -512,6 +516,36 @@ export const voiceRecording = () =>
     typeof MediaRecorder === "function" &&
     navigator.mediaDevices !== undefined;
 
+let activeWakeLock = null;
+
+/**
+ * Acquire a screen wake lock to prevent the device from sleeping during recording.
+ */
+export async function requestWakeLock() {
+    try {
+        if ("wakeLock" in navigator && typeof navigator.wakeLock?.request === "function") {
+            activeWakeLock = await navigator.wakeLock.request("screen");
+            activeWakeLock.addEventListener?.("release", () => {
+                activeWakeLock = null;
+            });
+        }
+    } catch {
+        activeWakeLock = null;
+    }
+}
+
+/**
+ * Release the active screen wake lock.
+ */
+export async function releaseWakeLock() {
+    try {
+        if (activeWakeLock) {
+            await activeWakeLock.release();
+            activeWakeLock = null;
+        }
+    } catch {}
+}
+
 export function useVoiceMessage(onRecording) {
     const [state, setState] = useState("idle"); // A recording under way, or not.
     const [began, setBegan] = useState(0); // When the recording began, for the time beside its mic.
@@ -527,6 +561,7 @@ export function useVoiceMessage(onRecording) {
             chunks: [],
             /** End the recording: `send` hands it on, anything else drops it. */
             stop(send) {
+                void releaseWakeLock();
                 const recorder = this.recorder;
 
                 if (!recorder || recorder.state === "inactive") {
@@ -617,6 +652,7 @@ export function useVoiceMessage(onRecording) {
 
                         this.recorder = recorder;
                         recorder.start(1000);
+                        void requestWakeLock();
                         setBegan(Date.now());
                         setState("recording");
                     })
@@ -631,7 +667,14 @@ export function useVoiceMessage(onRecording) {
     }
 
     useEffect(() => {
-        const hidden = () => document.hidden && self.current.stop(false);
+        const hidden = () => {
+            if (document.hidden && self.current?.recorder) {
+                // If recording has been active for more than 500ms, preserve and send it rather than discarding
+                const elapsed = began > 0 ? Date.now() - began : 0;
+
+                self.current.stop(elapsed >= 500);
+            }
+        };
 
         document.addEventListener("visibilitychange", hidden);
 
@@ -639,11 +682,13 @@ export function useVoiceMessage(onRecording) {
             document.removeEventListener("visibilitychange", hidden);
             self.current.stop(false);
         };
-    }, []);
+    }, [began]);
 
     return {
         state,
         began,
+        start: () => self.current.start(),
+        stop: (send = true) => self.current.stop(send),
         toggle: () => (self.current.recorder ? self.current.stop(true) : self.current.start()),
         cancel: () => self.current.stop(false),
     };
@@ -690,6 +735,23 @@ export const voiceLanguage = () => {
     return /^[a-z]{2,3}$/.test(said) ? said : "";
 };
 
+/** The language switch chip for voice messages. */
+export function VoiceLangButton({ disabled = false }) {
+    const lang = voiceLangNow();
+
+    return html`<button
+        type="button"
+        class="voice-lang"
+        aria-label=${t("Voice message language: $", t(lang[1]))}
+        title=${t("Voice message language: $", t(lang[1]))}
+        disabled=${disabled}
+        onMouseDown=${(event) => event.preventDefault()}
+        onClick=${() => void cycleVoiceLanguage()}
+    >
+        ${lang[2]}
+    </button>`;
+}
+
 /**
  * The voice message's mic: starts a recording, and while it records, ends it and sends it. While it records, the
  * time it has been going stands before it, and a cross behind it drops the recording.
@@ -698,7 +760,6 @@ export function VoiceButton({ voice, class: className = "", size = 17, part, dis
     const { state, began } = voice;
     const recording = state === "recording";
     const sending = state === "sending";
-    const lang = voiceLangNow();
     const [, tick] = useState(0);
 
     useEffect(() => {
@@ -712,17 +773,7 @@ export function VoiceButton({ voice, class: className = "", size = 17, part, dis
     }, [recording]);
 
     return html`<span class="voice-live">
-        <button
-            type="button"
-            class="voice-lang"
-            aria-label=${t("Voice message language: $", t(lang[1]))}
-            title=${t("Voice message language: $", t(lang[1]))}
-            disabled=${sending}
-            onMouseDown=${(event) => event.preventDefault()}
-            onClick=${() => void cycleVoiceLanguage()}
-        >
-            ${lang[2]}
-        </button>
+        <${VoiceLangButton} disabled=${sending} />
         ${
             recording &&
             html`<span class="voice-clock" aria-hidden="true">
@@ -763,4 +814,33 @@ export function VoiceButton({ voice, class: className = "", size = 17, part, dis
             </button>`
         }
     </span>`;
+}
+
+/**
+ * Mobile Push-to-Talk Recording Overlay (WeChat / Telegram style).
+ * Shows pulsing microphone waves, timer, and cancel warning when user slides up.
+ */
+export function VoiceOverlay({ active, canceling, seconds = 0 }) {
+    if (!active) {
+        return null;
+    }
+
+    const clock = voiceClock(seconds);
+
+    return html`<div class="voice-overlay-backdrop" onContextMenu=${(e) => e.preventDefault()}>
+        <div class=${`voice-overlay-card ${canceling ? "canceling" : ""}`}>
+            <div class="voice-overlay-icon-wrap">
+                <${Icon} name=${canceling ? "close" : "mic"} size=${36} />
+            </div>
+            <div class="voice-overlay-waves">
+                <span class="wave wave-1"></span>
+                <span class="wave wave-2"></span>
+                <span class="wave wave-3"></span>
+            </div>
+            <div class="voice-overlay-timer">${clock}</div>
+            <div class="voice-overlay-tip">
+                ${canceling ? t("Release to cancel") : t("Release to send, slide up to cancel")}
+            </div>
+        </div>
+    </div>`;
 }

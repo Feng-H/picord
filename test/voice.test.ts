@@ -167,3 +167,18 @@ test("a phrase still being heard finishes in place around what was typed after i
     assert.equal(box.value, "Please fix the login bug! And add a test");
     unmountAll();
 });
+
+test("VoiceOverlay returns null when inactive and renders when active", () => {
+    const VoiceOverlay = (voice as unknown as { VoiceOverlay: (props: { active: boolean; canceling?: boolean; seconds?: number }) => unknown }).VoiceOverlay;
+
+    assert.equal(VoiceOverlay({ active: false }), null);
+    // When active, stub returns non-null or calls html()
+    assert.doesNotThrow(() => VoiceOverlay({ active: true, canceling: false, seconds: 12 }));
+    assert.doesNotThrow(() => VoiceOverlay({ active: true, canceling: true, seconds: 5 }));
+});
+
+test("VoiceLangButton renders without error", () => {
+    const VoiceLangButton = (voice as unknown as { VoiceLangButton: (props: { disabled?: boolean }) => unknown }).VoiceLangButton;
+
+    assert.doesNotThrow(() => VoiceLangButton({ disabled: false }));
+});
