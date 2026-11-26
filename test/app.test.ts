@@ -1750,7 +1750,7 @@ test("a composer Interrupt keeps everyone's queued modes, files, images and entr
         await app.commands.configure(id, owner(), {
             model: { provider: "faux", modelId: "faux-vision" },
         });
-        await app.commands.submit(id, owner(), { text: "stream a long answer", requestId: "cf-1" });
+        await app.commands.submit(id, guest, { text: "stream a long answer", requestId: "cf-1" });
         await until(() => app.isBusy(id), "the run to start");
         const picture = await app.commands.submit(id, owner(), {
             text: "mine first with a picture",
@@ -2234,7 +2234,7 @@ test("an Interrupt of one queued message leaves the 3 others, from 2 people, que
     const by = [owner().id, guest.id, guest.id];
 
     try {
-        await app.commands.submit(id, owner(), { text: "stream a long answer", requestId: "st-1" });
+        await app.commands.submit(id, guest, { text: "stream a long answer", requestId: "st-1" });
         await until(() => app.isBusy(id), "the run to start");
         await app.commands.submit(id, owner(), {
             text: "first of mine",

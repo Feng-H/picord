@@ -67,13 +67,13 @@ import {
 import { describe, HttpError, optionalText } from "./errors.ts";
 import { attribute } from "./fence.ts";
 import { homePath } from "./paths.ts";
-import { forModel, MAX_INLINE_IMAGE, modelImage } from "./model-images.ts";
+import { MAX_INLINE_IMAGE, forModel, modelImage } from "./model-images.ts";
 import { mentionedPaths, viewFile } from "./files.ts";
-import { MAX_STT, sttConfigured, transcribeAudio } from "./stt.ts";
+import { sttConfigured, transcribeAudio } from "./stt.ts";
 import { isThinkingLevel, THINKING_LEVELS } from "./models.ts";
 import { writePiSession } from "./pi-sessions.ts";
 import { snippet } from "./projection.ts";
-import { SteeringPolicy } from "./turn-pipeline/index.ts";
+import type { StandardTurnAdapter } from "./turn-pipeline/index.ts";
 import { type QuoteOrigin, validateQuotes, formatQuoteContextBlock } from "./quote-provenance.ts";
 import {
     globalModelSettings,
@@ -82,7 +82,7 @@ import {
     rememberedLevel,
 } from "./project-model.ts";
 import { expandPromptTemplate, expandSkillCommand, unwrapSkill } from "./prompts.ts";
-import { clientKey, ownRequest, requestFor, requestPerson } from "./requests.ts";
+import { ownRequest, requestPerson } from "./requests.ts";
 import {
     type Interrupt,
     interruptTask,
@@ -866,279 +866,225 @@ export class Commands {
         requestId: string;
         wait?: Promise<unknown>;
     }> {
+        return await this.#app.turnPipeline.submit(id, user, request, { via, admission });
+    }
+
+    /**
+     * Narrow host adapter injected into `TurnPipeline` so every standard turn, voice note, channel post, and
+     * rule-dispatched turn flows through the single `TurnPipeline.submit()` seam.
+     */
+    standardTurnAdapter(): StandardTurnAdapter {
         const app = this.#app;
 
-        app.requireSee(user, id);
-        await app.requireDriver(id, user);
+        return {
+            authorize: async (id, actor) => {
+                app.requireSee(actor, id);
+                await app.requireDriver(id, actor);
 
-        // PiP turned off takes nothing, from its person either: it would run without its rules, and be compacted without
-        // its own summary (`pip-compact.ts`). What else goes to it (reports, schedules, watches) waits meanwhile.
-        if (app.pip.ownerOf(id) !== undefined && !app.pip.available(user)) {
-            throw new HttpError(409, "PiP is turned off in Extensions.");
-        }
+                // PiP turned off takes nothing, from its person either: it would run without its rules, and be
+                // compacted without its own summary (`pip-compact.ts`). What else goes to it (reports, schedules,
+                // watches) waits meanwhile.
+                if (app.pip.ownerOf(id) !== undefined && !app.pip.available(actor)) {
+                    throw new HttpError(409, "PiP is turned off in Extensions.");
+                }
 
-        const conversation = await app.conversation(id);
-        let typed = request.text.trim();
+                await app.conversation(id);
+            },
+            getActiveTurnAuthorId: async (id) => {
+                const live = await app.harness.snapshot(LiveDoc, id, context);
 
-        // 1. Decoupled Local Command Registry (via TurnPipeline)
-        const localCommand = app.turnPipeline.registry.resolve(typed);
+                if (live?.run === undefined) {
+                    return undefined;
+                }
 
-        if (localCommand !== undefined) {
-            return await app.turnPipeline.submit(id, user, request, { via, admission });
-        }
+                const activeSubmissionId = live.run.inputs?.[0];
 
-        // 2. Evaluate steering directive and permission gate
-        const steering = new SteeringPolicy().evaluate({
-            text: typed,
-            mode: request.mode,
-            actor: user,
-        });
+                if (activeSubmissionId === undefined) {
+                    return null;
+                }
 
-        typed = steering.cleanedText;
-        const whenBusy = steering.whenBusy;
+                const status = await (
+                    await app.harness.submission(activeSubmissionId, context)
+                )?.status(context);
 
-        // `/skill:name request` sends the skill with the request; `/name arguments`, Pi's prompt template of that name.
-        const expanded = typed.startsWith("/skill:")
-            ? (expandSkillCommand(typed, app.skillCommands(id)) ?? typed)
-            : typed.startsWith("/")
-              ? (expandPromptTemplate(typed, app.promptTemplates(id)) ?? typed)
-              : typed;
-        // A value an extension hides (`host.hide`), pasted into the message, is never stored nor sent to the model.
-        const text = app.hidden.replace(expanded, id);
-        const attachments = request.attachments ?? [];
+                return requestPerson(status?.requestId)?.userId ?? null;
+            },
+            expandText: (id, typed) =>
+                typed.startsWith("/skill:")
+                    ? (expandSkillCommand(typed, app.skillCommands(id)) ?? typed)
+                    : typed.startsWith("/")
+                      ? (expandPromptTemplate(typed, app.promptTemplates(id)) ?? typed)
+                      : typed,
+            maskHidden: (id, value) => app.hidden.replace(value, id),
+            prepareTurn: async (id, actor) => {
+                const agent = await app.agentState(id);
+                const model =
+                    agent?.model === undefined
+                        ? undefined
+                        : app.models.getModel(agent.model.provider, agent.model.modelId);
 
-        if (text === "" && attachments.length === 0) {
-            throw new HttpError(400, "Nothing to send");
-        }
+                if (model === undefined) {
+                    throw new HttpError(409, "Pick a model for this conversation first.");
+                }
 
-        const agent = await app.agentState(id);
-        const model =
-            agent?.model === undefined
-                ? undefined
-                : app.models.getModel(agent.model.provider, agent.model.modelId);
+                app.spend.check(actor, id);
 
-        if (model === undefined) {
-            throw new HttpError(409, "Pick a model for this conversation first.");
-        }
+                return { supportsImages: model.input.includes("image") };
+            },
+            media: {
+                sttConfigured,
+                readFile: (path) => readFile(path),
+                transcribe: (buffer, mime, language) => transcribeAudio(buffer, mime, language),
+                isInlineImage: (file) => forModel(file.mime, file.size),
+                processImage: (path, mime) => modelImage(path, mime),
+            },
+            formatBody: (actor, written) => this.messageText(actor, written),
+            enrichContext: async ({ conversationId: id, actor, typed, request, supportsImages }) => {
+                const about = this.#aboutSession(id, actor, request.about);
+                const quotes = this.#aboutQuotes(actor, request.quotes);
+                // Channel mentions: #name tokens that name a channel of this server say which session each is, for Pi alone.
+                const channels = await this.#mentionedChannels(typed);
+                const mentionedParts =
+                    request.inlineFiles === true
+                        ? await this.#mentionedFiles(id, actor, typed, supportsImages)
+                        : undefined;
 
-        app.spend.check(user, id);
+                return { about, quotes, channels, mentionedParts };
+            },
+            dispatchDurable: async ({
+                conversationId: id,
+                actor,
+                content,
+                whenBusy,
+                allowInterrupt,
+                requestId,
+                admission,
+            }) => {
+                const conversation = await app.conversation(id);
+                // A failed subagent's failure as the person writes to it: what their message comes to settles it.
+                const failure = await this.#failureOf(id);
+                // A retry of a request finds its first submission: it is no new message, and no event goes out for it again.
+                const knownRetry =
+                    app.pip.ownerOf(id) === undefined &&
+                    (await app.harness.commit((tx) => tx.submissionByRequest(id, requestId), context)) !==
+                        undefined;
+                let finalActor = actor;
+                let submitContext = context;
+                let admitted: { submissionId: SubmissionId } | { task: TaskId; started: boolean };
 
-        // Most were made ready as they were uploaded (`model-images.ts`); the rest are made side by
-        // side, in their order.
-        const images = model.input.includes("image")
-            ? attachments.filter((file) => forModel(file.mime, file.size))
-            : [];
-        const made = await Promise.allSettled(
-            images.map((file) => modelImage(file.path, file.mime)),
-        );
-        // What differs between a file and the image the model gets goes on the file's line.
-        const notes = new Map<Attachment, string>();
+                // Human extension starts acquire a short policy lease after preparation. Its context checks policy
+                // again when durable admission reaches the mutation line, not just before it joins the queue.
+                if (admission !== undefined) {
+                    const accepted = await admission.beforeSubmit();
 
-        made.forEach((result, index) => {
-            if (result.status === "fulfilled" && result.value.note !== undefined) {
-                notes.set(images[index]!, result.value.note);
-            }
-        });
+                    finalActor = accepted.user;
+                    submitContext = accepted.context;
+                }
 
-        // Voice messages: what an attached audio says, heard by the server's speech-to-text, becomes the message's
-        // words — the model reads them in place of listening, and the person sees what was heard in their own message.
-        const heard = await this.#heardAudio(id, attachments, request.audioLanguage);
-        const said = heard === "" ? text : text === "" ? heard : `${text}\n${heard}`;
+                try {
+                    submitContext.abortSignal?.throwIfAborted();
+                    // Only a person's own message interrupts, never one sent for them (`via`). The same durable handoff as
+                    // a queued message's Interrupt keeps everything waiting, before it stops the run. Admission releases its
+                    // lease once that handoff is stored, not while the task stops the run and puts the messages back.
+                    admitted = await (allowInterrupt
+                        ? this.#interrupt(id, { content, requestId }, submitContext)
+                        : conversation
+                              .submit(
+                                  {
+                                      type: "input",
+                                      content,
+                                      whenBusy,
+                                      requestId,
+                                  },
+                                  submitContext,
+                              )
+                              .then((submission) => ({ submissionId: submission.id })));
+                } finally {
+                    admission?.afterSubmit();
+                }
 
-        const lines = attachments.map((file) => {
-            const note = notes.get(file);
-            const line = `- ${file.path} (${file.name}, ${file.mime || "unknown type"}, ${file.size} bytes)`;
+                let submissionId: SubmissionId;
 
-            return note === undefined ? line : `${line} ${note}`;
-        });
-        // The heading whole, with files alone too: what reads the message splits it there.
-        const written =
-            lines.length === 0 ? said : `${said}${ATTACHMENTS_HEADING}${lines.join("\n")}`;
-        const body = this.messageText(
-            user,
-            via === undefined ? written : `[via ${via}] ${written}`,
-        );
-        const about = this.#aboutSession(id, user, request.about);
-        const quoteContext = this.#aboutQuotes(user, request.quotes);
-        // Channel mentions: #name tokens that name a channel of this server say which session each is, for Pi alone.
-        const channelContext = await this.#mentionedChannels(typed);
-        const mentioned =
-            request.inlineFiles === true
-                ? await this.#mentionedFiles(id, user, typed, model.input.includes("image"))
-                : [];
-        // A file's text that a message brings along hides what extensions hide (`host.hide`), as the message does.
-        const parts: (TextContent | ImageContent)[] = [
-            { type: "text", text: body },
-            ...mentioned.map((part) =>
-                part.type === "text" ? { ...part, text: app.hidden.replace(part.text, id) } : part,
-            ),
-            ...(about === undefined ? [] : [{ type: "text" as const, text: about }]),
-            ...(quoteContext === undefined ? [] : [{ type: "text" as const, text: quoteContext }]),
-            ...(channelContext === undefined
-                ? []
-                : [{ type: "text" as const, text: channelContext }]),
-        ];
+                if ("task" in admitted) {
+                    if (admitted.started) {
+                        await app.collab.activity(id, finalActor, "interrupted the run");
+                    }
 
-        made.forEach((result, index) => {
-            if (result.status === "fulfilled") {
-                parts.push(result.value.image);
-            } else {
-                app.notice(
-                    "warning",
-                    `Could not attach ${images[index]!.name}: ${describe(result.reason)}`,
-                    id,
-                );
-            }
-        });
+                    await app.harness.waitForTask(admitted.task, context);
+                    const sent = await app.harness.commit(
+                        (tx) => tx.submissionByRequest(id, requestId),
+                        context,
+                    );
 
-        const content = parts.length === 1 ? body : parts;
-        const requestId =
-            via === undefined
-                ? ownRequest(user.id, clientKey(request.requestId))
-                : requestFor(user.id, clientKey(request.requestId));
-        // A failed subagent's failure as the person writes to it: what their message comes to settles it.
-        const failure = await this.#failureOf(id);
+                    if (sent === undefined) {
+                        throw new HttpError(409, "The Interrupt message could not be sent. Try again.");
+                    }
 
-        let submitContext = context;
+                    submissionId = sent.id;
+                } else {
+                    submissionId = admitted.submissionId;
+                }
 
-        // Human extension starts acquire a short policy lease after preparation. Its context checks policy again
-        // when durable admission reaches the mutation line, not just before it joins the queue.
-        if (admission !== undefined) {
-            const accepted = await admission.beforeSubmit();
+                const submission = (await app.harness.submission(submissionId, context))!;
+                const wait = submission.wait(context);
 
-            user = accepted.user;
-            submitContext = accepted.context;
-            submitContext.abortSignal?.throwIfAborted();
-        }
+                this.#reportUnanswered(id, wait);
 
-        // A retry of a request finds its first submission: it is no new message, and no event goes out for it again.
-        const known =
-            app.pip.ownerOf(id) === undefined &&
-            (await app.harness.commit((tx) => tx.submissionByRequest(id, requestId), context)) !==
-                undefined;
-        // Only a person's own message interrupts, never one sent for them (`via`). The same durable handoff as a
-        // queued message's Interrupt keeps everything waiting, before it stops the run. Admission releases its lease
-        // once that handoff is stored, not while the task stops the run and puts the messages back.
-        const admitted = await (
-            request.mode === "interrupt" && via === undefined
-                ? this.#interrupt(id, { content, requestId }, submitContext)
-                : conversation
-                      .submit(
-                          {
-                              type: "input",
-                              content,
-                              whenBusy,
-                              requestId,
-                          },
-                          submitContext,
-                      )
-                      .then((submission) => ({ submissionId: submission.id }))
-        ).finally(() => admission?.afterSubmit());
-        let submissionId: SubmissionId;
+                if (failure !== undefined) {
+                    await this.#followFailure(id, finalActor, failure, requestId);
+                }
 
-        if ("task" in admitted) {
-            if (admitted.started) {
-                await app.collab.activity(id, user, "interrupted the run");
-            }
-
-            await app.harness.waitForTask(admitted.task, context);
-            const sent = await app.harness.commit(
-                (tx) => tx.submissionByRequest(id, requestId),
-                context,
-            );
-
-            if (sent === undefined) {
-                throw new HttpError(409, "The Interrupt message could not be sent. Try again.");
-            }
-
-            submissionId = sent.id;
-        } else {
-            submissionId = admitted.submissionId;
-        }
-
-        const submission = (await app.harness.submission(submissionId, context))!;
-
-        app.collab.setTyping(id, user, null);
-        // The title comes from the message as it was stored: without hidden values. A voice message's title comes
-        // from what its audio said, which is its words now.
-        const titled = app.hidden.replace(typed === "" ? said : typed, id);
-
-        await this.#touched(id, titled, text === titled || text === "" ? undefined : text);
-
-        // Zero-LLM Activity Capture for Conversation Rule Engine
-        const channel = app.channels?.get(id);
-
-        if (channel?.name) {
-            app.ruleEngine?.touch(channel.name, Date.now(), submission.id);
-        }
-
-        app.ruleEngine?.touch(String(id), Date.now(), submission.id);
-
-        const wait = submission.wait(context);
-
-        this.#reportUnanswered(id, wait);
-
-        if (failure !== undefined) {
-            await this.#followFailure(id, user, failure, requestId);
-        }
-
-        // For extensions (`host.on`): once for each message (two retries at once, too), never for PiP's conversation,
-        // which is its person's alone.
-        if (app.pip.ownerOf(id) === undefined && !known && this.#announce(submission.id)) {
-            app.events.emit("message.sent", {
-                conversationId: Number(id),
-                by: user.id,
-                submissionId: String(submission.id),
+                return {
+                    submissionId: submission.id,
+                    wait,
+                    knownRetry,
+                    finalActor,
+                };
+            },
+            onCommitted: async ({
+                conversationId: id,
+                actor,
+                submissionId,
+                knownRetry,
+                typed,
+                said,
                 text,
-                ...(via === undefined ? {} : { via }),
-            });
-        }
+                via,
+            }) => {
+                app.collab.setTyping(id, actor, null);
+                // The title comes from the message as it was stored: without hidden values. A voice message's title
+                // comes from what its audio said, which is its words now.
+                const titled = app.hidden.replace(typed === "" ? said : typed, id);
 
-        return { submissionId: submission.id, requestId, wait };
+                await this.#touched(id, titled, text === titled || text === "" ? undefined : text);
+
+                // Zero-LLM Activity Capture for Conversation Rule Engine
+                const channel = app.channels?.get(id);
+
+                if (channel?.name) {
+                    app.ruleEngine?.touch(channel.name, Date.now(), submissionId);
+                }
+
+                app.ruleEngine?.touch(String(id), Date.now(), submissionId);
+
+                // For extensions (`host.on`): once for each message (two retries at once, too), never for PiP's
+                // conversation, which is its person's alone.
+                if (app.pip.ownerOf(id) === undefined && !knownRetry && this.#announce(submissionId)) {
+                    app.events.emit("message.sent", {
+                        conversationId: Number(id),
+                        by: actor.id,
+                        submissionId: String(submissionId),
+                        text,
+                        ...(via === undefined ? {} : { via }),
+                    });
+                }
+            },
+            notice: (id, level, message) => app.notice(level, message, id),
+        };
     }
 
     /** Submissions `message.sent` went out for lately: a retry that raced its first try finds its id here. */
     readonly #announced = new Set<string>();
-
-    /**
-     * What a message's attached audio says (`🎙 …`, one line each): the server's speech-to-text hears each, most
-     * recent last. An audio that cannot be heard leaves no line, and a warning goes to the session's notices.
-     */
-    async #heardAudio(
-        id: ConversationId,
-        attachments: Attachment[],
-        language = "",
-    ): Promise<string> {
-        const audio = attachments.filter(
-            (file) => file.mime?.startsWith("audio/") === true && file.size <= MAX_STT,
-        );
-
-        if (audio.length === 0 || !sttConfigured()) {
-            return "";
-        }
-
-        const lines = await Promise.all(
-            audio.slice(0, 4).map(async (file) => {
-                try {
-                    const words = (
-                        await transcribeAudio(await readFile(file.path), file.mime, language)
-                    ).trim();
-
-                    return words === "" ? undefined : `🎙 ${words}`;
-                } catch (error) {
-                    this.#app.notice(
-                        "warning",
-                        `Could not transcribe ${file.name}: ${describe(error)}`,
-                        id,
-                    );
-
-                    return undefined;
-                }
-            }),
-        );
-
-        return lines.filter(Boolean).join("\n");
-    }
 
     /** Whether to send `message.sent` for a submission: once only, as far as this process knows. */
     #announce(submissionId: unknown): boolean {

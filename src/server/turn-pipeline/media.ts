@@ -25,7 +25,9 @@ export interface MediaProcessInput {
     text: string;
     attachments?: Attachment[];
     audioLanguage?: string;
+    sttEnabled?: boolean;
     modelSupportsImages?: boolean;
+    isInlineImage?: (file: Attachment) => boolean;
     readFile?: AudioFileReader;
     transcribe?: AudioTranscriber;
     processImage?: ImageProcessor;
@@ -67,27 +69,44 @@ export class MediaProcessor {
         const degradationWarnings: string[] = [];
         const audioTranscripts: string[] = [];
 
-        // 1. Audio Processing with Graceful Degradation
+        // 1. Audio Processing with Graceful Degradation (bounded to 4 clips concurrently)
         const audioFiles = attachments.filter(
             (file) => file.mime?.startsWith("audio/") && file.size <= MAX_STT_SIZE,
         );
 
-        if (audioFiles.length > 0 && transcribe && readFile) {
-            for (const file of audioFiles.slice(0, 4)) {
-                try {
-                    const buffer = await readFile(file.path);
-                    const words = (await transcribe(buffer, file.mime, input.audioLanguage)).trim();
+        if (audioFiles.length > 0 && input.sttEnabled !== false && transcribe && readFile) {
+            const audioResults = await Promise.all(
+                audioFiles.slice(0, 4).map(async (file) => {
+                    try {
+                        const buffer = await readFile(file.path);
+                        const words = (
+                            await transcribe(buffer, file.mime, input.audioLanguage)
+                        ).trim();
 
-                    if (words !== "") {
-                        audioTranscripts.push(`🎙 ${words}`);
+                        return words === "" ? undefined : { transcript: `🎙 ${words}` };
+                    } catch (error) {
+                        const warning = `Could not transcribe ${file.name}: ${describe(error)}`;
+
+                        onNotice?.("warning", warning);
+
+                        // Graceful degradation: preserve warning banner so user & agent see transcription failed
+                        return {
+                            transcript: `[warning: audio transcription unavailable for ${file.name}]`,
+                            warning,
+                        };
                     }
-                } catch (error) {
-                    const warning = `Could not transcribe ${file.name}: ${describe(error)}`;
+                }),
+            );
 
-                    degradationWarnings.push(warning);
-                    onNotice?.("warning", warning);
-                    // Graceful degradation: append warning banner into transcript so user is aware
-                    audioTranscripts.push(`[warning: audio transcription unavailable for ${file.name}]`);
+            for (const entry of audioResults) {
+                if (!entry) {
+                    continue;
+                }
+
+                audioTranscripts.push(entry.transcript);
+
+                if (entry.warning !== undefined) {
+                    degradationWarnings.push(entry.warning);
                 }
             }
         }
@@ -97,25 +116,40 @@ export class MediaProcessor {
         const notes = new Map<Attachment, string>();
 
         if (input.modelSupportsImages && processImage) {
-            const imageFiles = attachments.filter((file) =>
-                file.mime?.startsWith("image/"),
+            const imageFilter =
+                input.isInlineImage ?? ((file: Attachment) => file.mime?.startsWith("image/") === true);
+            const imageFiles = attachments.filter(imageFilter);
+            const imageResults = await Promise.all(
+                imageFiles.map(async (file) => {
+                    try {
+                        const result = await processImage(file.path, file.mime);
+
+                        return { file, image: result.image, note: result.note };
+                    } catch (error) {
+                        const warning = `Could not attach ${file.name}: ${describe(error)}`;
+
+                        onNotice?.("warning", warning);
+
+                        return {
+                            file,
+                            warning,
+                            note: "[image processing failed, kept original file]",
+                        };
+                    }
+                }),
             );
 
-            for (const file of imageFiles) {
-                try {
-                    const result = await processImage(file.path, file.mime);
+            for (const entry of imageResults) {
+                if (entry.image !== undefined) {
+                    imageParts.push(entry.image);
+                }
 
-                    imageParts.push(result.image);
+                if (entry.note !== undefined) {
+                    notes.set(entry.file, entry.note);
+                }
 
-                    if (result.note !== undefined) {
-                        notes.set(file, result.note);
-                    }
-                } catch (error) {
-                    const warning = `Could not attach ${file.name}: ${describe(error)}`;
-
-                    degradationWarnings.push(warning);
-                    onNotice?.("warning", warning);
-                    notes.set(file, "[image processing failed, kept original file]");
+                if (entry.warning !== undefined) {
+                    degradationWarnings.push(entry.warning);
                 }
             }
         }

@@ -83,3 +83,91 @@ test("SteeringPolicy demotes unauthorized third-party steering to followUp queue
     assert.ok(decision.reason?.includes("Only administrators or the original author"));
     assert.equal(decision.cleanedText, "Interrupt Alice's answer with my question");
 });
+
+test("SteeringPolicy allows owner and active turn author to interrupt an ongoing turn", () => {
+    const policy = new SteeringPolicy();
+
+    const authorDecision = policy.evaluate({
+        text: "Stop and switch approach",
+        mode: "interrupt",
+        actor: AUTHOR_USER,
+        activeTurnAuthorId: AUTHOR_USER.id,
+    });
+
+    assert.equal(authorDecision.allowInterrupt, true);
+    assert.equal(authorDecision.whenBusy, "steer");
+    assert.equal(authorDecision.steerRequested, true);
+    assert.equal(authorDecision.steerGranted, true);
+
+    const adminDecision = policy.evaluate({
+        text: "Stop immediately",
+        mode: "interrupt",
+        actor: ADMIN_USER,
+        activeTurnAuthorId: AUTHOR_USER.id,
+    });
+
+    assert.equal(adminDecision.allowInterrupt, true);
+    assert.equal(adminDecision.steerGranted, true);
+});
+
+test("SteeringPolicy grants interrupt when no turn is active and demotes unauthorized interrupt", () => {
+    const policy = new SteeringPolicy();
+
+    const idleDecision = policy.evaluate({
+        text: "Urgent question",
+        mode: "interrupt",
+        actor: OTHER_USER,
+        activeTurnAuthorId: undefined,
+    });
+
+    assert.equal(idleDecision.allowInterrupt, true);
+    assert.equal(idleDecision.steerGranted, true);
+
+    const blockedDecision = policy.evaluate({
+        text: "Cancel Alice's work for mine",
+        mode: "interrupt",
+        actor: OTHER_USER,
+        activeTurnAuthorId: AUTHOR_USER.id,
+    });
+
+    assert.equal(blockedDecision.allowInterrupt, false);
+    assert.equal(blockedDecision.whenBusy, "followUp");
+    assert.equal(blockedDecision.steerRequested, true);
+    assert.equal(blockedDecision.steerGranted, false);
+    assert.ok(blockedDecision.reason?.includes("Only administrators or the original author"));
+
+    const steerOnly = policy.evaluate({
+        text: "Steer only",
+        mode: "steer",
+        actor: AUTHOR_USER,
+        activeTurnAuthorId: AUTHOR_USER.id,
+    });
+
+    assert.equal(steerOnly.allowInterrupt, false);
+    assert.equal(steerOnly.whenBusy, "steer");
+});
+
+test("SteeringPolicy treats active unowned run (null) as protected for guests but steerable for owners", () => {
+    const policy = new SteeringPolicy();
+
+    const guestBlocked = policy.evaluate({
+        text: "Interrupt background job",
+        mode: "interrupt",
+        actor: OTHER_USER,
+        activeTurnAuthorId: null,
+    });
+
+    assert.equal(guestBlocked.allowInterrupt, false);
+    assert.equal(guestBlocked.whenBusy, "followUp");
+    assert.equal(guestBlocked.steerGranted, false);
+
+    const ownerAllowed = policy.evaluate({
+        text: "Owner interrupt background job",
+        mode: "interrupt",
+        actor: ADMIN_USER,
+        activeTurnAuthorId: null,
+    });
+
+    assert.equal(ownerAllowed.allowInterrupt, true);
+    assert.equal(ownerAllowed.steerGranted, true);
+});

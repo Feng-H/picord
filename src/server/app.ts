@@ -887,6 +887,7 @@ export class PocketApp {
 
         this.turnPipeline = new TurnPipeline({
             conversationLookup: (convId) => this.conversation(convId),
+            standard: this.commands.standardTurnAdapter(),
         });
 
         this.turnPipeline.registry.register("/rule", (ctx) => {
