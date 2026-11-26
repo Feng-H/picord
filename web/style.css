@@ -5946,9 +5946,47 @@ pre.diff .del {
     text-overflow: ellipsis;
 }
 
+.voice-mode-toggle {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 30px;
+    padding: 0 10px;
+    border-radius: var(--r-pill);
+    border: 1px solid var(--border);
+    background: var(--hover);
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+        background-color var(--t-hover) var(--ease-out),
+        border-color var(--t-hover) var(--ease-out),
+        color var(--t-hover) var(--ease-out);
+}
+
+@media (hover: hover) {
+    .voice-mode-toggle:hover {
+        background: var(--card-2);
+        border-color: var(--muted);
+    }
+}
+
 .voice-mode-toggle.on {
     color: var(--accent);
-    background: var(--hover);
+    border-color: var(--accent-line, var(--accent));
+    background: color-mix(in srgb, var(--accent) 10%, var(--hover));
+}
+
+@container composer (max-width: 340px) {
+    .voice-mode-toggle {
+        padding: 0 8px;
+    }
+    .voice-mode-label {
+        display: none;
+    }
 }
 
 /* Floating overlay for mobile push-to-talk */

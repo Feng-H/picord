@@ -513,6 +513,8 @@ const WORDS = {
         "Test sent. It shows as a system notification.": "测试已发送。它会以系统通知的形式出现。",
         "Picord updated. Reload to apply.": "Picord 已更新，刷新即可应用。",
         // 语音按住说话。
+        "Voice": "语音",
+        "Keyboard": "键盘",
         "Hold to Talk": "按住 说话",
         "Release to send, slide up to cancel": "松开 发送，上滑 取消",
         "Release to cancel": "松开手指，取消发送",

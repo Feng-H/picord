@@ -16,7 +16,14 @@ export function registerWorker() {
         return Promise.resolve(null);
     }
 
-    registering ??= navigator.serviceWorker.register("/sw.js").catch(() => null);
+    registering ??= navigator.serviceWorker
+        .register("/sw.js")
+        .then((registration) => {
+            registration.update().catch(() => {});
+
+            return registration;
+        })
+        .catch(() => null);
 
     return registering;
 }

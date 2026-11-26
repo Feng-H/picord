@@ -1575,7 +1575,13 @@ export function Composer() {
     };
 
     const voice = useVoiceMessage((blob) => sendVoice(blob));
-    const [voiceMode, setVoiceMode] = useState(false);
+    const [voiceMode, setVoiceMode] = useState(() => {
+        try {
+            return localStorage.getItem("pocket.voiceMode") === "1";
+        } catch {
+            return false;
+        }
+    });
     const [pressing, setPressing] = useState(false);
     const [canceling, setCanceling] = useState(false);
     const [pressSeconds, setPressSeconds] = useState(0);
@@ -2794,7 +2800,7 @@ export function Composer() {
                         />`
                     }
                     ${
-                        voiceMode
+                        voiceLive && voiceMode
                             ? html`<div class="voice-press-wrapper" data-part="voice-press-wrapper">
                                 <button
                                     type="button"
@@ -2845,6 +2851,37 @@ export function Composer() {
                             ></textarea>`
                     }
                     <div class="composer-row" data-part="composer-tools">
+                        ${
+                            voiceLive &&
+                            html`<button
+                                type="button"
+                                class=${`voice-mode-toggle ${voiceMode ? "on active" : ""}`}
+                                data-part="composer-button voice-mode-toggle"
+                                aria-label=${voiceMode ? t("Switch to Keyboard") : t("Switch to Voice")}
+                                title=${voiceMode ? t("Switch to Keyboard") : t("Switch to Voice")}
+                                disabled=${sending}
+                                onClick=${() => {
+                                    const next = !voiceMode;
+
+                                    setVoiceMode(next);
+
+                                    try {
+                                        localStorage.setItem("pocket.voiceMode", next ? "1" : "0");
+                                    } catch {}
+
+                                    if (!next) {
+                                        requestAnimationFrame(() => box.current?.focus());
+                                    } else {
+                                        box.current?.blur();
+                                    }
+                                }}
+                            >
+                                <${Icon} name=${voiceMode ? "keyboard" : "mic"} size=${15} />
+                                <span class="voice-mode-label">
+                                    ${voiceMode ? t("Keyboard") : t("Voice")}
+                                </span>
+                            </button>`
+                        }
                         ${slotItems("composer", { picker, agent, level, view }).map(({ node }) => node)}
                         <input
                             ref=${picker}
@@ -2902,28 +2939,7 @@ export function Composer() {
                         ${busy && html`<${ModePick} mode=${sendMode} onPick=${setSendMode} />`}
                         ${
                             voiceLive
-                                ? html`<span class="voice-live">
-                                    ${voiceMode && html`<${VoiceLangButton} disabled=${sending} />`}
-                                    <button
-                                        type="button"
-                                        class=${`icon-button voice-mode-toggle ${voiceMode ? "on active" : ""} composer-mic`}
-                                        data-part="composer-button voice-mode-toggle"
-                                        aria-label=${voiceMode ? t("Switch to Keyboard") : t("Switch to Voice")}
-                                        title=${voiceMode ? t("Switch to Keyboard") : t("Switch to Voice")}
-                                        disabled=${sending}
-                                        onClick=${() => {
-                                            const next = !voiceMode;
-
-                                            setVoiceMode(next);
-
-                                            if (!next) {
-                                                requestAnimationFrame(() => box.current?.focus());
-                                            }
-                                        }}
-                                    >
-                                        <${Icon} name=${voiceMode ? "keyboard" : "mic"} size=${17} />
-                                    </button>
-                                </span>`
+                                ? voiceMode && html`<${VoiceLangButton} disabled=${sending} />`
                                 : html`<${MicButton}
                                         dictation=${dictation}
                                         class="composer-mic"
@@ -2932,7 +2948,7 @@ export function Composer() {
                                     />`
                         }
                         ${
-                            !voiceMode &&
+                            !(voiceLive && voiceMode) &&
                             html`<button
                                 class=${`send-button ${canSend ? "ready" : ""}`}
                                 data-part="send-button"

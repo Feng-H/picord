@@ -2,7 +2,7 @@
 // approval from its notification, opens the right session when one is tapped, and hands things shared to Pi Pocket
 // from other apps to the page. It caches static shell assets to provide instant startup, while updating in background.
 
-const SHELL_CACHE = "picord-shell-v3";
+const SHELL_CACHE = "picord-shell-v4";
 /** Where shared things wait until the page picks them up; see `web/share.js`. */
 const SHARE_CACHE = "pocket-share";
 
@@ -12,6 +12,9 @@ const CORE_ASSETS = [
     "/app.js",
     "/composer.js",
     "/voice.js",
+    "/store.js",
+    "/ui.js",
+    "/i18n.js",
     "/vendor/preact.mjs",
     "/vendor/preact-hooks.mjs",
     "/vendor/htm.mjs",
@@ -237,6 +240,55 @@ async function staleWhileRevalidate(request, fallbackUrl) {
     return new Response("Offline", { status: 503, statusText: "Offline" });
 }
 
+async function networkFirst(request, fallbackUrl, timeoutMs = 1500) {
+    const cache = await caches.open(SHELL_CACHE);
+
+    const networkPromise = fetch(request).then((response) => {
+        if (response && response.status === 200) {
+            cache.put(fallbackUrl || request, response.clone());
+        }
+
+        return response;
+    });
+
+    const cached = await cache.match(fallbackUrl || request);
+
+    if (!cached) {
+        try {
+            return await networkPromise;
+        } catch {
+            if (fallbackUrl) {
+                const rootCached = await cache.match("/");
+
+                if (rootCached) {
+                    return rootCached;
+                }
+            }
+
+            return new Response("Offline", { status: 503, statusText: "Offline" });
+        }
+    }
+
+    let timer;
+    const timeoutPromise = new Promise((resolve) => {
+        timer = setTimeout(() => resolve(null), timeoutMs);
+    });
+
+    try {
+        const result = await Promise.race([networkPromise.catch(() => null), timeoutPromise]);
+
+        clearTimeout(timer);
+
+        if (result) {
+            return result;
+        }
+    } catch {
+        clearTimeout(timer);
+    }
+
+    return cached;
+}
+
 self.addEventListener("fetch", (event) => {
     const url = new URL(event.request.url);
 
@@ -256,14 +308,18 @@ self.addEventListener("fetch", (event) => {
         }
 
         if (event.request.mode === "navigate") {
-            event.respondWith(staleWhileRevalidate(event.request, "/"));
+            event.respondWith(networkFirst(event.request, "/"));
+
+            return;
+        }
+
+        if (url.pathname.endsWith(".css") || url.pathname.endsWith(".js")) {
+            event.respondWith(networkFirst(event.request));
 
             return;
         }
 
         if (
-            url.pathname.endsWith(".css") ||
-            url.pathname.endsWith(".js") ||
             url.pathname.endsWith(".mjs") ||
             url.pathname.endsWith(".woff2") ||
             url.pathname.endsWith(".svg") ||
