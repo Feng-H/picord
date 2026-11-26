@@ -892,3 +892,246 @@ export function VoiceOverlay({ active, canceling, seconds = 0 }) {
         </div>
     </div>`;
 }
+
+/**
+ * Package a recorded voice blob and upload it with transient retry recovery for flaky mobile links.
+ * Returns the uploaded attachment descriptor, or `undefined` after reporting the final failure.
+ */
+export async function uploadVoiceBlob(
+    blob,
+    upload,
+    { maxTries = 3, retryDelayMs = 800 } = {},
+) {
+    const mime = blob?.type || "audio/webm";
+    const file = new File([blob], mime.includes("mp4") ? "voice-message.m4a" : "voice-message.webm", {
+        type: mime,
+    });
+
+    for (let attemptIndex = 0; attemptIndex < maxTries; attemptIndex++) {
+        try {
+            return await upload(file);
+        } catch (error) {
+            if (attemptIndex >= maxTries - 1) {
+                notify("error", t("Voice message did not go out: $", error?.message ?? error));
+
+                return undefined;
+            }
+
+            if (retryDelayMs > 0) {
+                await new Promise((wake) => setTimeout(wake, retryDelayMs));
+            }
+        }
+    }
+
+    return undefined;
+}
+
+/**
+ * Persist whether the composer is in Hold-to-Talk voice mode (`pocket.voiceMode`).
+ */
+export function useVoiceMode(storageKey = "pocket.voiceMode") {
+    const [voiceMode, setVoiceMode] = useState(() => {
+        try {
+            return typeof localStorage !== "undefined" && localStorage.getItem(storageKey) === "1";
+        } catch {
+            return false;
+        }
+    });
+
+    const toggleVoiceMode = () => {
+        const next = !voiceMode;
+
+        setVoiceMode(next);
+
+        try {
+            localStorage.setItem(storageKey, next ? "1" : "0");
+        } catch {}
+
+        return next;
+    };
+
+    return { voiceMode, setVoiceMode, toggleVoiceMode };
+}
+
+/**
+ * Manage WeChat-style Hold-to-Talk pointer gestures, swipe-up cancel hysteresis, haptics,
+ * and minimum duration enforcement over a `useVoiceMessage` controller.
+ */
+export function useHoldToTalk(
+    voice,
+    { disabled = false, minDurationMs = 500, cancelOffsetPx = 50, resetOffsetPx = 40 } = {},
+) {
+    const [pressing, setPressing] = useState(false);
+    const [canceling, setCanceling] = useState(false);
+    const [pressSeconds, setPressSeconds] = useState(0);
+    const gestureRef = useRef({ active: false, canceling: false, time: 0, y: 0, timer: null });
+
+    const clearTimer = () => {
+        if (gestureRef.current.timer) {
+            clearInterval(gestureRef.current.timer);
+            gestureRef.current.timer = null;
+        }
+    };
+
+    const vibrate = (pattern) => {
+        try {
+            if (typeof navigator !== "undefined") {
+                navigator.vibrate?.(pattern);
+            }
+        } catch {}
+    };
+
+    useEffect(() => clearTimer, []);
+
+    const finishPress = (event, { warnShort }) => {
+        if (!gestureRef.current.active) {
+            return;
+        }
+
+        try {
+            event?.currentTarget?.releasePointerCapture?.(event.pointerId);
+        } catch {}
+
+        clearTimer();
+
+        const duration = Date.now() - gestureRef.current.time;
+        const isCancel = gestureRef.current.canceling;
+
+        gestureRef.current.active = false;
+        gestureRef.current.canceling = false;
+        setPressing(false);
+        setCanceling(false);
+        setPressSeconds(0);
+
+        if (isCancel) {
+            voice.cancel();
+
+            if (warnShort) {
+                vibrate([20, 50, 20]);
+            }
+        } else if (duration < minDurationMs) {
+            voice.cancel();
+
+            if (warnShort) {
+                notify("info", t("Hold to talk: press longer to record"));
+            }
+        } else {
+            voice.stop(true);
+        }
+    };
+
+    const onPressStart = (event) => {
+        if ((event.button !== undefined && event.button !== 0) || disabled) {
+            return;
+        }
+
+        event.preventDefault?.();
+
+        try {
+            event.currentTarget?.setPointerCapture?.(event.pointerId);
+        } catch {}
+
+        vibrate(40);
+        clearTimer();
+
+        const now = Date.now();
+
+        gestureRef.current = {
+            active: true,
+            canceling: false,
+            time: now,
+            y: event.clientY,
+            timer: setInterval(() => {
+                setPressSeconds(Math.max(0, Math.floor((Date.now() - now) / 1000)));
+            }, 200),
+        };
+
+        setPressing(true);
+        setCanceling(false);
+        setPressSeconds(0);
+        voice.start();
+    };
+
+    const onPressMove = (event) => {
+        if (!gestureRef.current.active) {
+            return;
+        }
+
+        const deltaY = gestureRef.current.y - event.clientY;
+
+        if (deltaY > cancelOffsetPx) {
+            if (!gestureRef.current.canceling) {
+                gestureRef.current.canceling = true;
+                setCanceling(true);
+                vibrate(20);
+            }
+        } else if (deltaY <= resetOffsetPx && gestureRef.current.canceling) {
+            gestureRef.current.canceling = false;
+            setCanceling(false);
+        }
+    };
+
+    return {
+        pressing,
+        canceling,
+        pressSeconds,
+        onPressStart,
+        onPressMove,
+        onPressEnd: (event) => finishPress(event, { warnShort: true }),
+        onPressCancel: (event) => finishPress(event, { warnShort: false }),
+    };
+}
+
+/** Hold-to-Talk press bar rendered inside the composer in voice mode. */
+export function HoldToTalkBar({ hold, sending = false, disabled = false }) {
+    const busy = disabled || sending;
+
+    return html`<div class="voice-press-wrapper" data-part="voice-press-wrapper">
+        <button
+            type="button"
+            class=${`voice-press-bar ${hold.pressing ? "pressing" : ""} ${hold.canceling ? "canceling" : ""} ${sending ? "sending" : ""}`}
+            data-part="voice-press-bar"
+            disabled=${busy}
+            onPointerDown=${hold.onPressStart}
+            onPointerMove=${hold.onPressMove}
+            onPointerUp=${hold.onPressEnd}
+            onPointerCancel=${hold.onPressCancel}
+            onContextMenu=${(event) => event.preventDefault()}
+        >
+            ${
+                sending
+                    ? html`<${Spinner} hidden=${true} />`
+                    : html`<${Icon} name="mic" size=${18} class="voice-press-icon" />`
+            }
+            <span class="voice-press-text">
+                ${
+                    sending
+                        ? t("Sending the voice message")
+                        : hold.pressing
+                          ? hold.canceling
+                              ? t("Release to cancel")
+                              : t("Release to send, slide up to cancel")
+                          : t("Hold to Talk")
+                }
+            </span>
+        </button>
+    </div>`;
+}
+
+/** Toggle pill switching the composer between keyboard typing and Hold-to-Talk voice mode. */
+export function VoiceModeToggle({ voiceMode, disabled = false, onToggle }) {
+    return html`<button
+        type="button"
+        class=${`voice-mode-toggle ${voiceMode ? "on active" : ""}`}
+        data-part="composer-button voice-mode-toggle"
+        aria-label=${voiceMode ? t("Switch to Keyboard") : t("Switch to Voice")}
+        title=${voiceMode ? t("Switch to Keyboard") : t("Switch to Voice")}
+        disabled=${disabled}
+        onClick=${onToggle}
+    >
+        <${Icon} name=${voiceMode ? "keyboard" : "mic"} size=${15} />
+        <span class="voice-mode-label">
+            ${voiceMode ? t("Keyboard") : t("Voice")}
+        </span>
+    </button>`;
+}

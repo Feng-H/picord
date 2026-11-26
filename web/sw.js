@@ -2,7 +2,7 @@
 // approval from its notification, opens the right session when one is tapped, and hands things shared to Pi Pocket
 // from other apps to the page. It caches static shell assets to provide instant startup, while updating in background.
 
-const SHELL_CACHE = "picord-shell-v7";
+const SHELL_CACHE = "picord-shell-v8";
 /** Where shared things wait until the page picks them up; see `web/share.js`. */
 const SHARE_CACHE = "pocket-share";
 

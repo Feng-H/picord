@@ -52,14 +52,20 @@ import { fromServer } from "./seen.js";
 import { defineItem, slotItems } from "./slots.js";
 import { SubagentsBar } from "./subagents.js";
 import { TrustBar } from "./trust.js";
-import { prefs, setPrefs } from "./theme.js";
+import { prefs } from "./theme.js";
 import { fingerprint } from "./text-hash.js";
 import { says } from "./turns.js";
 import {
+    HoldToTalkBar,
     MicButton,
-    VoiceButton,
+    VoiceLangButton,
+    VoiceModeToggle,
+    VoiceOverlay,
+    uploadVoiceBlob,
     useDictation,
+    useHoldToTalk,
     useVoiceMessage,
+    useVoiceMode,
     voiceLanguage,
     voiceRecording,
 } from "./voice.js";
@@ -875,62 +881,6 @@ function channelAt(text, caret) {
     return { start: caret - query.length - 1, end: caret + rest.length, query };
 }
 
-const VOICE_LANGS = [
-    ["auto", "the transcription's own guess", "AUTO"],
-    ["zh", "Chinese", "中"],
-    ["en", "English", "EN"],
-    ["de", "German", "DE"],
-];
-
-function VoiceLangButton({ disabled = false }) {
-    const said = voiceLanguage() || "auto";
-    const lang = VOICE_LANGS.find(([code]) => code === said) ?? VOICE_LANGS[0];
-
-    const cycle = () => {
-        const at = VOICE_LANGS.findIndex(([code]) => code === (voiceLanguage() || "auto"));
-        const next = VOICE_LANGS[(at + 1) % VOICE_LANGS.length] ?? VOICE_LANGS[0];
-
-        setPrefs({ voiceLang: next[0] });
-    };
-
-    return html`<button
-        type="button"
-        class="voice-lang"
-        aria-label=${t("Voice message language: $", t(lang[1]))}
-        title=${t("Voice message language: $", t(lang[1]))}
-        disabled=${disabled}
-        onMouseDown=${(event) => event.preventDefault()}
-        onClick=${cycle}
-    >
-        ${lang[2]}
-    </button>`;
-}
-
-function VoiceOverlay({ active, canceling, seconds = 0 }) {
-    if (!active) {
-        return null;
-    }
-
-    const clock = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
-
-    return html`<div class="voice-overlay-backdrop" onContextMenu=${(event) => event.preventDefault()}>
-        <div class=${`voice-overlay-card ${canceling ? "canceling" : ""}`}>
-            <div class="voice-overlay-icon-wrap">
-                <${Icon} name=${canceling ? "close" : "mic"} size=${36} />
-            </div>
-            <div class="voice-overlay-waves">
-                <span class="wave wave-1"></span>
-                <span class="wave wave-2"></span>
-                <span class="wave wave-3"></span>
-            </div>
-            <div class="voice-overlay-timer">${clock}</div>
-            <div class="voice-overlay-tip">
-                ${canceling ? t("Release to cancel") : t("Release to send, slide up to cancel")}
-            </div>
-        </div>
-    </div>`;
-}
-
 export function Composer() {
     const { view, conversationId } = store.state;
     const historyScope = { person: store.state.me?.id, conversation: conversationId };
@@ -1523,27 +1473,10 @@ export function Composer() {
     // server hears what it says, and the words land in the conversation as the message. The upload goes again when
     // the network blips mid-flight (a phone's way — a lock of the screen cuts it), and each try makes a fresh file.
     const sendVoice = async (blob) => {
-        const file = new File(
-            [blob],
-            blob.type.includes("mp4") ? "voice-message.m4a" : "voice-message.webm",
-            { type: blob.type },
-        );
-        let attachment;
+        const attachment = await uploadVoiceBlob(blob, (file) => actions.upload(file));
 
-        for (let tries = 0; ; tries++) {
-            try {
-                attachment = await actions.upload(file);
-
-                break;
-            } catch (error) {
-                if (tries >= 2) {
-                    notify("error", t("Voice message did not go out: $", error.message ?? error));
-
-                    return;
-                }
-
-                await new Promise((wake) => setTimeout(wake, 800));
-            }
+        if (!attachment) {
+            return;
         }
 
         const record = beginSend(
@@ -1575,159 +1508,9 @@ export function Composer() {
     };
 
     const voice = useVoiceMessage((blob) => sendVoice(blob));
-    const [voiceMode, setVoiceMode] = useState(() => {
-        try {
-            return localStorage.getItem("pocket.voiceMode") === "1";
-        } catch {
-            return false;
-        }
-    });
-    const [pressing, setPressing] = useState(false);
-    const [canceling, setCanceling] = useState(false);
-    const [pressSeconds, setPressSeconds] = useState(0);
-    const pressStartRef = useRef({ active: false, canceling: false, time: 0, y: 0, timer: null });
     const voiceSending = voice.state === "sending";
-
-    useEffect(() => {
-        return () => {
-            if (pressStartRef.current.timer) {
-                clearInterval(pressStartRef.current.timer);
-                pressStartRef.current.timer = null;
-            }
-        };
-    }, []);
-
-    const onPressStart = (event) => {
-        if ((event.button !== undefined && event.button !== 0) || sending || voiceSending) {
-            return;
-        }
-
-        event.preventDefault();
-
-        try {
-            event.currentTarget.setPointerCapture(event.pointerId);
-        } catch {
-            // Pointer capture unsupported or failed
-        }
-
-        try {
-            navigator.vibrate?.(40);
-        } catch {}
-
-        const now = Date.now();
-
-        if (pressStartRef.current.timer) {
-            clearInterval(pressStartRef.current.timer);
-        }
-
-        pressStartRef.current = {
-            active: true,
-            canceling: false,
-            time: now,
-            y: event.clientY,
-            timer: setInterval(() => {
-                setPressSeconds(Math.max(0, Math.floor((Date.now() - now) / 1000)));
-            }, 200),
-        };
-
-        setPressing(true);
-        setCanceling(false);
-        setPressSeconds(0);
-        voice.start();
-    };
-
-    const onPressMove = (event) => {
-        if (!pressStartRef.current.active) {
-            return;
-        }
-
-        const deltaY = pressStartRef.current.y - event.clientY;
-
-        if (deltaY > 50) {
-            if (!pressStartRef.current.canceling) {
-                pressStartRef.current.canceling = true;
-                setCanceling(true);
-
-                try {
-                    navigator.vibrate?.(20);
-                } catch {}
-            }
-        } else if (deltaY <= 40) {
-            if (pressStartRef.current.canceling) {
-                pressStartRef.current.canceling = false;
-                setCanceling(false);
-            }
-        }
-    };
-
-    const onPressEnd = (event) => {
-        if (!pressStartRef.current.active) {
-            return;
-        }
-
-        try {
-            event.currentTarget.releasePointerCapture(event.pointerId);
-        } catch {}
-
-        if (pressStartRef.current.timer) {
-            clearInterval(pressStartRef.current.timer);
-            pressStartRef.current.timer = null;
-        }
-
-        const duration = Date.now() - pressStartRef.current.time;
-        const isCancel = pressStartRef.current.canceling;
-
-        pressStartRef.current.active = false;
-        pressStartRef.current.canceling = false;
-
-        setPressing(false);
-        setCanceling(false);
-        setPressSeconds(0);
-
-        if (isCancel) {
-            voice.cancel();
-
-            try {
-                navigator.vibrate?.([20, 50, 20]);
-            } catch {}
-        } else if (duration < 500) {
-            voice.cancel();
-            notify("info", t("Hold to talk: press longer to record"));
-        } else {
-            voice.stop(true);
-        }
-    };
-
-    const onPressCancel = (event) => {
-        if (!pressStartRef.current.active) {
-            return;
-        }
-
-        try {
-            event.currentTarget.releasePointerCapture(event.pointerId);
-        } catch {}
-
-        if (pressStartRef.current.timer) {
-            clearInterval(pressStartRef.current.timer);
-            pressStartRef.current.timer = null;
-        }
-
-        const duration = Date.now() - pressStartRef.current.time;
-        const isCancel = pressStartRef.current.canceling;
-
-        pressStartRef.current.active = false;
-        pressStartRef.current.canceling = false;
-
-        setPressing(false);
-        setCanceling(false);
-        setPressSeconds(0);
-
-        if (isCancel || duration < 500) {
-            voice.cancel();
-        } else {
-            voice.stop(true);
-        }
-    };
+    const { voiceMode, toggleVoiceMode } = useVoiceMode();
+    const hold = useHoldToTalk(voice, { disabled: sending || voiceSending });
 
     const send = async (other = false) => {
         if (!canSend) {
@@ -2817,36 +2600,11 @@ export function Composer() {
                     }
                     ${
                         voiceLive && voiceMode
-                            ? html`<div class="voice-press-wrapper" data-part="voice-press-wrapper">
-                                <button
-                                    type="button"
-                                    class=${`voice-press-bar ${pressing ? "pressing" : ""} ${canceling ? "canceling" : ""} ${voiceSending ? "sending" : ""}`}
-                                    data-part="voice-press-bar"
-                                    disabled=${sending || voiceSending}
-                                    onPointerDown=${onPressStart}
-                                    onPointerMove=${onPressMove}
-                                    onPointerUp=${onPressEnd}
-                                    onPointerCancel=${onPressCancel}
-                                    onContextMenu=${(event) => event.preventDefault()}
-                                >
-                                    ${
-                                        voiceSending
-                                            ? html`<${Spinner} hidden=${true} />`
-                                            : html`<${Icon} name="mic" size=${18} class="voice-press-icon" />`
-                                    }
-                                    <span class="voice-press-text">
-                                        ${
-                                            voiceSending
-                                                ? t("Sending the voice message")
-                                                : pressing
-                                                  ? canceling
-                                                      ? t("Release to cancel")
-                                                      : t("Release to send, slide up to cancel")
-                                                  : t("Hold to Talk")
-                                        }
-                                    </span>
-                                </button>
-                            </div>`
+                            ? html`<${HoldToTalkBar}
+                                  hold=${hold}
+                                  sending=${voiceSending}
+                                  disabled=${sending}
+                              />`
                             : html`<textarea
                                 ref=${setBox}
                                 rows="1"
@@ -2876,21 +2634,11 @@ export function Composer() {
                     <div class="composer-row" data-part="composer-tools">
                         ${
                             voiceLive &&
-                            html`<button
-                                type="button"
-                                class=${`voice-mode-toggle ${voiceMode ? "on active" : ""}`}
-                                data-part="composer-button voice-mode-toggle"
-                                aria-label=${voiceMode ? t("Switch to Keyboard") : t("Switch to Voice")}
-                                title=${voiceMode ? t("Switch to Keyboard") : t("Switch to Voice")}
+                            html`<${VoiceModeToggle}
+                                voiceMode=${voiceMode}
                                 disabled=${sending}
-                                onClick=${() => {
-                                    const next = !voiceMode;
-
-                                    setVoiceMode(next);
-
-                                    try {
-                                        localStorage.setItem("pocket.voiceMode", next ? "1" : "0");
-                                    } catch {}
+                                onToggle=${() => {
+                                    const next = toggleVoiceMode();
 
                                     if (!next) {
                                         requestAnimationFrame(() => box.current?.focus());
@@ -2898,12 +2646,7 @@ export function Composer() {
                                         box.current?.blur();
                                     }
                                 }}
-                            >
-                                <${Icon} name=${voiceMode ? "keyboard" : "mic"} size=${15} />
-                                <span class="voice-mode-label">
-                                    ${voiceMode ? t("Keyboard") : t("Voice")}
-                                </span>
-                            </button>`
+                            />`
                         }
                         ${slotItems("composer", { picker, agent, level, view }).map(({ node }) => node)}
                         <input
@@ -2992,7 +2735,7 @@ export function Composer() {
                     </div>
                 </div>`
         }
-        <${VoiceOverlay} active=${pressing} canceling=${canceling} seconds=${pressSeconds} />
+        <${VoiceOverlay} active=${hold.pressing} canceling=${hold.canceling} seconds=${hold.pressSeconds} />
         <${StatusLine} />
     </footer>`;
 }

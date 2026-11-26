@@ -12,9 +12,9 @@ const STUBS: Record<string, string> = {
             globalThis.voiceCleanups.push(effect());
         };
     `,
-    "./store.js": `export const notify = () => {}; export const store = { state: { appearance: {} } };`,
+    "./store.js": `export const notify = (level, text) => { globalThis.voiceNotices?.push({ level, text }); }; export const store = { state: { appearance: {} } };`,
     "./ui.js": `export const html = () => null; export const Icon = () => null; export const Spinner = () => null;`,
-    "./i18n.js": `export const t = (word) => word; export const uiLanguage = () => "en";`,
+    "./i18n.js": `export const t = (word, arg) => (arg === undefined ? word : word.replace("$", String(arg))); export const uiLanguage = () => "en";`,
 };
 
 registerHooks({
@@ -46,6 +46,7 @@ const recognitions: Recognition[] = [];
 
 (globalThis as Record<string, unknown>).voiceCleanups = [];
 (globalThis as Record<string, unknown>).voiceEffectDeps = [];
+(globalThis as Record<string, unknown>).voiceNotices = [];
 (globalThis as Record<string, unknown>).document = {
     activeElement: null,
     hidden: false,
@@ -303,4 +304,166 @@ test("useVoiceMessage keeps recording alive across start and sends blob on stop(
     assert.equal(tracksStopped.length, tracksBefore + 1, "pending stream tracks are stopped cleanly");
 
     unmountAll();
+});
+
+test("uploadVoiceBlob picks extension from MIME and retries transient failures before failing", async () => {
+    const notices = (globalThis as unknown as { voiceNotices: { level: string; text: string }[] })
+        .voiceNotices;
+
+    notices.length = 0;
+
+    const uploadVoiceBlob = (
+        voice as unknown as {
+            uploadVoiceBlob: (
+                blob: Blob,
+                upload: (file: File) => Promise<{ path: string }>,
+                options?: { maxTries?: number; retryDelayMs?: number },
+            ) => Promise<{ path: string } | undefined>;
+        }
+    ).uploadVoiceBlob;
+
+    assert.equal(typeof uploadVoiceBlob, "function", "uploadVoiceBlob must be exported by voice.js");
+
+    let attempts = 0;
+    const seenFiles: File[] = [];
+    const attachment = await uploadVoiceBlob(
+        new Blob(["audio"], { type: "audio/mp4" }),
+        async (file) => {
+            seenFiles.push(file);
+            attempts += 1;
+
+            if (attempts < 2) {
+                throw new Error("network blip");
+            }
+
+            return { path: `/uploads/${file.name}` };
+        },
+        { retryDelayMs: 0 },
+    );
+
+    assert.equal(attempts, 2);
+    assert.equal(seenFiles[0]!.name, "voice-message.m4a");
+    assert.equal(attachment?.path, "/uploads/voice-message.m4a");
+    assert.equal(notices.length, 0);
+
+    // Exhaust retries -> notifies error and returns undefined
+    const failed = await uploadVoiceBlob(
+        new Blob(["audio"], { type: "audio/webm" }),
+        async () => {
+            throw new Error("server down");
+        },
+        { maxTries: 3, retryDelayMs: 0 },
+    );
+
+    assert.equal(failed, undefined);
+    assert.equal(notices.length, 1);
+    assert.equal(notices[0]!.level, "error");
+    assert.ok(notices[0]!.text.includes("server down"));
+});
+
+test("useHoldToTalk manages short taps, swipe-up cancel hysteresis, and valid send holds", async () => {
+    const notices = (globalThis as unknown as { voiceNotices: { level: string; text: string }[] })
+        .voiceNotices;
+
+    notices.length = 0;
+
+    const useHoldToTalk = (
+        voice as unknown as {
+            useHoldToTalk: (
+                ctrl: { start: () => void; stop: (send?: boolean) => void; cancel: () => void },
+                options?: { disabled?: boolean; minDurationMs?: number },
+            ) => {
+                onPressStart: (event: unknown) => void;
+                onPressMove: (event: unknown) => void;
+                onPressEnd: (event: unknown) => void;
+                onPressCancel: (event: unknown) => void;
+            };
+        }
+    ).useHoldToTalk;
+
+    assert.equal(typeof useHoldToTalk, "function", "useHoldToTalk must be exported by voice.js");
+
+    const calls: string[] = [];
+    const hold = useHoldToTalk(
+        {
+            start: () => calls.push("start"),
+            stop: (send) => calls.push(`stop:${String(send)}`),
+            cancel: () => calls.push("cancel"),
+        },
+        { minDurationMs: 25 },
+    );
+
+    const makeTarget = () => ({ setPointerCapture() {}, releasePointerCapture() {} });
+    const target = makeTarget();
+
+    // 1. Short tap (< 25ms) -> cancels and emits info notice
+    hold.onPressStart({ button: 0, clientY: 500, pointerId: 1, currentTarget: target, preventDefault() {} });
+    hold.onPressEnd({ pointerId: 1, currentTarget: target });
+    assert.deepEqual(calls, ["start", "cancel"]);
+    assert.equal(notices.at(-1)?.level, "info");
+
+    // 2. Slide up past 50px enters cancel -> release cancels without stop(true)
+    calls.length = 0;
+    hold.onPressStart({ button: 0, clientY: 500, pointerId: 2, currentTarget: target, preventDefault() {} });
+    await new Promise((r) => setTimeout(r, 35));
+    hold.onPressMove({ clientY: 440 }); // deltaY = 60 (> 50) -> canceling
+    hold.onPressEnd({ pointerId: 2, currentTarget: target });
+    assert.deepEqual(calls, ["start", "cancel"]);
+
+    // 3. Slide up past 50px, then back down within 40px, release >= 25ms -> sends!
+    calls.length = 0;
+    hold.onPressStart({ button: 0, clientY: 500, pointerId: 3, currentTarget: target, preventDefault() {} });
+    await new Promise((r) => setTimeout(r, 35));
+    hold.onPressMove({ clientY: 440 }); // canceling = true
+    hold.onPressMove({ clientY: 465 }); // deltaY = 35 (<= 40) -> canceling = false
+    hold.onPressEnd({ pointerId: 3, currentTarget: target });
+    assert.deepEqual(calls, ["start", "stop:true"]);
+
+    unmountAll();
+});
+
+test("HoldToTalkBar and VoiceModeToggle render cleanly", () => {
+    const HoldToTalkBar = (
+        voice as unknown as {
+            HoldToTalkBar: (props: {
+                hold: {
+                    pressing: boolean;
+                    canceling: boolean;
+                    onPressStart: () => void;
+                    onPressMove: () => void;
+                    onPressEnd: () => void;
+                    onPressCancel: () => void;
+                };
+                sending?: boolean;
+                disabled?: boolean;
+            }) => unknown;
+        }
+    ).HoldToTalkBar;
+    const VoiceModeToggle = (
+        voice as unknown as {
+            VoiceModeToggle: (props: {
+                voiceMode: boolean;
+                disabled?: boolean;
+                onToggle: () => void;
+            }) => unknown;
+        }
+    ).VoiceModeToggle;
+
+    assert.equal(typeof HoldToTalkBar, "function");
+    assert.equal(typeof VoiceModeToggle, "function");
+    assert.doesNotThrow(() =>
+        HoldToTalkBar({
+            hold: {
+                pressing: false,
+                canceling: false,
+                onPressStart: () => {},
+                onPressMove: () => {},
+                onPressEnd: () => {},
+                onPressCancel: () => {},
+            },
+            sending: false,
+            disabled: false,
+        }),
+    );
+    assert.doesNotThrow(() => VoiceModeToggle({ voiceMode: true, disabled: false, onToggle: () => {} }));
 });
