@@ -7,7 +7,6 @@
  * `alerts.ts`, provider sign-ins in `providers.ts`, and each conversation's shared live view in `room.ts`.
  */
 import { createRequire } from "node:module";
-import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
@@ -102,8 +101,9 @@ import {
 import { type GuardStatus, LancetGuard } from "./lancet.ts";
 import { takeLock } from "./lock.ts";
 import { Memory } from "./memory.ts";
-import { ChannelManager } from "./channels.ts";
-import { HistorySearchEngine } from "./history-search.ts";
+import type { ChannelManager } from "./channels.ts";
+import { DialogueRuntime } from "./dialogue-runtime.ts";
+import type { HistorySearchEngine } from "./history-search.ts";
 import { isThinkingLevel, modelInfo, modelList, resolveModel, THINKING_LEVELS } from "./models.ts";
 import { Updates } from "./updates.ts";
 import { pocketPackage, pocketVersion } from "./versions.ts";
@@ -141,25 +141,8 @@ import {
 } from "./room.ts";
 import { whyUnanswered } from "./subagent-runs.ts";
 import { Schedules } from "./schedules.ts";
-import {
-    ConversationRuleEngine,
-    FileRuleEngineStore,
-    loadDefaultRules,
-    formatRulePrompt,
-    appendSummarizedMarker,
-    watchRuleFiles,
-    formatRuleStatus,
-    formatRuleList,
-    appendEngineEventLog,
-    formatEngineEventNote,
-    type DispatchedTask,
-    type ConversationRule,
-    type EngineEvent,
-} from "./rule-engine/index.ts";
-import { NOTE_ENTRY } from "./entry-format.ts";
-import { ownRequest } from "./requests.ts";
-import { TurnPipeline } from "./turn-pipeline/index.ts";
-import { entryWords } from "./history-search.ts";
+import type { ConversationRuleEngine } from "./rule-engine/index.ts";
+import type { TurnPipeline } from "./turn-pipeline/index.ts";
 import { CoreSecrets } from "./secrets.ts";
 import { BackgroundTasks } from "./background.ts";
 import { SessionCleanup } from "./session-cleanup.ts";
@@ -463,6 +446,8 @@ export class PocketApp {
     readonly inbox = new Inbox(this);
     /** Lessons Pi keeps across sessions, for a project or everywhere. */
     readonly memory = new Memory(this);
+    /** Coordinates channels, transcript search, rule engine automation, and turn pipeline. */
+    readonly dialogue: DialogueRuntime;
     /** Channel manager: domain lifecycle and routing for Discord-style channels. */
     readonly channels: ChannelManager;
     /** History search engine: decoupled, channel-first transcript search with incremental caching. */
@@ -471,8 +456,6 @@ export class PocketApp {
     readonly ruleEngine: ConversationRuleEngine;
     /** Turn pipeline: decoupled command registry, media ingestion, and execution. */
     readonly turnPipeline: TurnPipeline;
-    #ruleTickTimer: NodeJS.Timeout | undefined;
-    #ruleWatcherCleaner: (() => void) | undefined;
     /** Each person's favorite working folders, shared by their devices. */
     readonly folderFavorites = new FolderFavorites(this);
     /** Artifacts published to anyone with their address (`share.ts`), which needs no sign-in. */
@@ -716,119 +699,28 @@ export class PocketApp {
             log: (line) => this.#log(line),
         });
         this.guard.protect = (tool, args, cwd) => this.secrets.blocked(tool, args, cwd);
-        this.channels = new ChannelManager(
-            {
-                list: () => {
-                    return Object.entries(this.#sessions)
-                        .filter(([, meta]) => meta.channel === true)
-                        .map(([id, meta]) => {
-                            const raw = meta.title ?? "";
-                            const name = raw.replace(/^#/, "").trim().toLowerCase();
-
-                            return {
-                                id: Number(id) as unknown as ConversationId,
-                                name,
-                                title: `#${name}`,
-                                createdBy: meta.createdBy ?? "",
-                                cwd: meta.cwd,
-                                archived: meta.archived === true,
-                            };
-                        });
-                },
-                get: (id: ConversationId) => {
-                    const meta = this.sessionMeta(id);
-
-                    if (meta?.channel !== true) {
-                        return undefined;
-                    }
-
-                    const raw = meta.title ?? "";
-                    const name = raw.replace(/^#/, "").trim().toLowerCase();
-
-                    return {
-                        id,
-                        name,
-                        title: `#${name}`,
-                        createdBy: meta.createdBy ?? "",
-                        cwd: meta.cwd,
-                        archived: meta.archived === true,
-                    };
-                },
-                create: async (info) => {
-                    const user = this.config.userById(info.createdBy);
-
-                    if (user === undefined) {
-                        throw new HttpError(403, "Unknown user");
-                    }
-
-                    const created = await this.commands.createSession(user, {
-                        title: `#${info.name}`,
-                        channel: true,
-                        cwd: info.cwd,
-                    });
-
-                    return {
-                        id: created.id,
-                        name: info.name,
-                        title: `#${info.name}`,
-                        createdBy: info.createdBy,
-                        cwd: info.cwd,
-                        archived: false,
-                    };
-                },
-            },
-            async (target, options) => {
-                const user = this.config.userById(
-                    this.sessionMeta(options.fromId)?.createdBy ?? "",
-                );
-
-                if (user === undefined) {
-                    throw new HttpError(403, "The posting conversation's person is gone.");
-                }
-
-                this.requireSee(user, target.id);
-                this.requireSteer(user);
-
-                const sourceTag = options.sourceChannel
-                    ? `via #${options.sourceChannel.name}`
-                    : `via session ${String(options.fromId)}`;
-                const text =
-                    options.sourceChannel && !options.message.startsWith("[via ")
-                        ? `[via #${options.sourceChannel.name}]\n${options.message}`
-                        : options.message;
-
-                await this.commands.submit(
-                    target.id,
-                    user,
-                    { text, requestId: randomUUID() },
-                    `channel #${target.name} (${sourceTag})`,
-                );
-            },
-        );
-        this.historySearch = new HistorySearchEngine({
-            getSessions: () => {
-                return this.sessions().map((s) => ({
-                    id: Number(s.id),
-                    title: s.title,
-                    channel: s.channel,
-                    archived: s.archived,
-                }));
-            },
-            getSessionMeta: (id) => {
-                const meta = this.sessionMeta(id as unknown as ConversationId);
-
-                if (!meta) {
-                    return undefined;
-                }
-
-                return {
-                    id,
+        this.dialogue = new DialogueRuntime({
+            dataDir: this.dataDir,
+            workspaceDir: process.cwd(),
+            build: this.build,
+            pid: process.pid,
+            listSessions: () =>
+                Object.entries(this.#sessions).map(([id, meta]) => ({
+                    id: Number(id),
                     title: meta.title,
                     channel: meta.channel,
                     archived: meta.archived,
-                };
-            },
-            readEntries: async (id, query, limit) => {
+                    createdBy: meta.createdBy,
+                    cwd: meta.cwd,
+                })),
+            sessionMeta: (id) => this.sessionMeta(id),
+            createChannelSession: (user, options) => this.commands.createSession(user, options),
+            userById: (id) => this.config.userById(id),
+            fallbackUser: () => this.config.users[0],
+            requireSee: (user, id) => this.requireSee(user, id),
+            requireSteer: (user) => this.requireSteer(user),
+            conversation: (id) => this.conversation(id),
+            readTranscriptEntries: async (id, query, limit) => {
                 const conversation = await this.conversation(id as unknown as ConversationId);
                 const page = await conversation.entries(
                     {
@@ -842,69 +734,17 @@ export class PocketApp {
 
                 return page.items;
             },
+            entriesAfter: (id, cursorEntryId, includeHidden) =>
+                this.transcripts.entriesAfter(id, cursorEntryId, includeHidden),
+            visibleEntry: (id, entryId) => this.transcripts.visibleEntry(id, entryId),
+            submitTurn: (id, user, request, via) => this.commands.submit(id, user, request, via),
+            standardTurnAdapter: () => this.commands.standardTurnAdapter(),
+            log: (line) => this.#log(line),
         });
-
-        const ruleStore = new FileRuleEngineStore(this.dataDir);
-        const rules = loadDefaultRules(this.dataDir, process.cwd());
-
-        this.ruleEngine = new ConversationRuleEngine({
-            rules,
-            store: ruleStore,
-            onDispatch: (task) => {
-                this.#log(`rule-engine dispatched task: ${task.ruleId} for channel ${task.channel}`);
-                void this.handleRuleDispatchedTask(task).catch((err: unknown) => {
-                    this.#log(`rule-engine task execution error: ${String(err)}`);
-                });
-            },
-            onEvent: (event) => {
-                void this.handleEngineEvent(event).catch((err: unknown) => {
-                    this.#log(`rule-engine event handling error: ${String(err)}`);
-                });
-            },
-        });
-
-        this.#ruleTickTimer = setInterval(() => {
-            void this.ruleEngine.tick().catch((err: unknown) => {
-                this.#log(`rule-engine tick error: ${String(err)}`);
-            });
-        }, 60_000);
-        this.#ruleTickTimer.unref();
-
-        const candidateRulePaths = [
-            join(process.cwd(), ".dialogue-session", "rules.json"),
-            join(this.dataDir, "rules.json"),
-        ];
-
-        this.#ruleWatcherCleaner = watchRuleFiles(candidateRulePaths, (file) => {
-            try {
-                const res = this.reloadRules();
-
-                this.#log(`rule-engine: hot reloaded ${String(res.count)} rules from ${file}`);
-            } catch (err: unknown) {
-                this.#log(`rule-engine: failed to hot reload rules from ${file}: ${String(err)}`);
-            }
-        });
-
-        this.turnPipeline = new TurnPipeline({
-            conversationLookup: (convId) => this.conversation(convId),
-            standard: this.commands.standardTurnAdapter(),
-        });
-
-        this.turnPipeline.registry.register("/rule", (ctx) => {
-            const reply = this.executeRuleCommand(ctx.rawText);
-
-            return {
-                reply,
-                prefixTag: "rule",
-                authorName: "Rule Engine",
-            };
-        });
-
-        this.ruleEngine.emitEvent({
-            timestamp: Date.now(),
-            type: "engine_version_changed",
-            details: { version: this.build, pid: process.pid },
-        });
+        this.channels = this.dialogue.channels;
+        this.historySearch = this.dialogue.historySearch;
+        this.ruleEngine = this.dialogue.ruleEngine;
+        this.turnPipeline = this.dialogue.turnPipeline;
     }
 
     /**
@@ -4555,16 +4395,7 @@ export class PocketApp {
     close(): Promise<void> {
         this.#closing ??= (async () => {
             clearTimeout(this.#sessionsTimer);
-
-            if (this.#ruleTickTimer) {
-                clearInterval(this.#ruleTickTimer);
-                this.#ruleTickTimer = undefined;
-            }
-
-            if (this.#ruleWatcherCleaner) {
-                this.#ruleWatcherCleaner();
-                this.#ruleWatcherCleaner = undefined;
-            }
+            this.dialogue.close();
 
             this.alerts.close();
             this.themes.close();
@@ -4633,209 +4464,6 @@ export class PocketApp {
         })();
 
         return this.#closing;
-    }
-
-    /**
-     * Executes a dispatched rule task: injects deterministic turn with SQLite entry boundaries,
-     * awaits completion, advances entry cursor, forwards results to target channel via ChannelPost,
-     * and appends human-readable >>>SUMMARIZED<<< marker.
-     */
-    async handleRuleDispatchedTask(task: DispatchedTask): Promise<void> {
-        const channel = this.channels?.get(task.channel);
-
-        if (!channel) {
-            this.#log(`rule-engine: target channel not found for ${task.channel}`);
-
-            return;
-        }
-
-        const meta = this.sessionMeta(channel.id);
-        const user = this.config.userById(meta?.createdBy ?? "") ?? this.config.users[0];
-
-        if (!user) {
-            this.#log(`rule-engine: no user found for channel ${task.channel}`);
-
-            return;
-        }
-
-        // Query unsummarized entries
-        const { entries, last } = await this.transcripts.entriesAfter(
-            channel.id,
-            task.cursorEntryId ?? 0,
-            false,
-        );
-
-        if (entries.length === 0) {
-            this.#log(
-                `rule-engine: no new entries to summarize for #${channel.name} since cursor ${String(task.cursorEntryId)}`,
-            );
-
-            return;
-        }
-
-        const headEntryId = Math.max(task.headEntryId ?? 0, last);
-        const prompt = formatRulePrompt(task, task.cursorEntryId ?? 0, headEntryId);
-
-        this.#log(
-            `rule-engine: injecting prompt into channel #${channel.name} (${String(task.cursorEntryId ?? 0)}, ${String(headEntryId)}]`,
-        );
-
-        const submitted = await this.commands.submit(
-            channel.id,
-            user,
-            { text: prompt, requestId: randomUUID() },
-            `rule:${task.ruleId}`,
-        );
-
-        if (submitted.wait) {
-            const settled = (await submitted.wait) as
-                | {
-                      status?: string;
-                      type?: string;
-                      answer?: number;
-                  }
-                | undefined;
-
-            if (settled && settled.status !== "unanswered") {
-                // Advance cursor monotonically
-                this.ruleEngine.advanceCursor(task.ruleId, headEntryId);
-                this.#log(`rule-engine: advanced cursor for ${task.ruleId} to ${String(headEntryId)}`);
-
-                // Automated dispatch of summary to destination channel via ChannelPost
-                if (task.forwardToChannel && settled.type === "input" && settled.answer !== undefined) {
-                    try {
-                        const answerRecord = await this.transcripts.visibleEntry(
-                            channel.id,
-                            settled.answer,
-                        );
-
-                        if (answerRecord) {
-                            const answerText = entryWords(answerRecord).text;
-
-                            if (answerText.trim() !== "") {
-                                await this.channels.post(channel.id, task.forwardToChannel, answerText.trim());
-                                this.#log(`rule-engine: forwarded summary to #${task.forwardToChannel}`);
-                            }
-                        }
-                    } catch (err: unknown) {
-                        this.#log(`rule-engine forward error: ${String(err)}`);
-                    }
-                }
-
-                // Preservation of human-readable >>>SUMMARIZED<<< marker in markdown archive
-                if (task.archiveFile) {
-                    try {
-                        const targetPath = join(process.cwd(), task.archiveFile);
-
-                        appendSummarizedMarker(targetPath);
-                        this.#log(`rule-engine: appended >>>SUMMARIZED<<< to ${targetPath}`);
-                    } catch (err: unknown) {
-                        this.#log(`rule-engine archive marker error: ${String(err)}`);
-                    }
-                }
-            }
-        }
-    }
-
-    /**
-     * Reload conversation rules from disk into the runtime engine.
-     */
-    reloadRules(): { count: number; rules: ConversationRule[] } {
-        const rules = loadDefaultRules(this.dataDir, process.cwd());
-
-        this.ruleEngine.reloadRules(rules);
-
-        return { count: rules.length, rules };
-    }
-
-    /**
-     * Execute in-conversation /rule commands: list, status, reload, and help.
-     */
-    executeRuleCommand(typed: string): string {
-        const parts = typed.trim().split(/\s+/);
-        const sub = (parts[1] ?? "").toLowerCase();
-
-        switch (sub) {
-            case "list":
-                return formatRuleList(this.ruleEngine.rules);
-            case "status":
-                return formatRuleStatus(this.ruleEngine);
-
-            case "reload": {
-                const res = this.reloadRules();
-
-                return `✅ **规则热重载成功**，已载入 ${String(res.count)} 条规则：\n${res.rules.map((r) => `- \`${r.id}\` (#${r.channel})`).join("\n")}`;
-            }
-
-            default:
-                return [
-                    "🤖 **对话规则引擎指令 (/rule)**",
-                    "- `/rule list`: 列出当前已配置生效的所有规则",
-                    "- `/rule status`: 查看当前频道的倒计时、增量游标与心跳状态",
-                    "- `/rule reload`: 立即从磁盘重新加载规则配置文件",
-                ].join("\n");
-        }
-    }
-
-    /**
-     * Handle engine events: write to append-only log file and inject system note into channel.
-     */
-    async handleEngineEvent(event: EngineEvent): Promise<void> {
-        // 1. Channel 1: Append to event log files (.dialogue-session and dataDir)
-        const logPaths = [
-            join(process.cwd(), ".dialogue-session", "engine-events.log"),
-            join(this.dataDir, "engine-events.log"),
-        ];
-
-        for (const logPath of logPaths) {
-            try {
-                appendEngineEventLog(logPath, event);
-            } catch {}
-        }
-
-        // 2. Channel 2: Inject system note into channel conversation for key state changes
-        const inChannelEvents = new Set<string>([
-            "rule_added",
-            "rule_removed",
-            "rule_modified",
-            "rule_fired",
-            "cursor_advanced",
-        ]);
-
-        if (event.channel && inChannelEvents.has(event.type)) {
-            const channel = this.channels.get(event.channel);
-
-            if (channel) {
-                try {
-                    const conversation = await this.conversation(channel.id);
-                    const noteText = formatEngineEventNote(event);
-                    const noteRequestId = ownRequest("engine", `engine-note-${randomUUID()}`);
-                    const model = [
-                        {
-                            role: "user" as const,
-                            content: [{ type: "text" as const, text: noteText }],
-                            timestamp: Date.now(),
-                        },
-                    ];
-
-                    await conversation.submit(
-                        {
-                            type: "write",
-                            entry: {
-                                kind: NOTE_ENTRY,
-                                data: { text: noteText, by: "engine", name: "Rule Engine" },
-                                model,
-                            },
-                            requestId: noteRequestId,
-                        },
-                        BACKGROUND_CONTEXT,
-                    );
-                    this.#log(`rule-engine: injected [engine] note into #${channel.name}`);
-                } catch (err: unknown) {
-                    this.#log(`rule-engine: failed to inject note into #${channel.name}: ${String(err)}`);
-                }
-            }
-        }
     }
 }
 
