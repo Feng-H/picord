@@ -211,6 +211,61 @@ test("uncommitted changes in its worktree keep a session; a live fork keeps the 
     assert.equal(existsSync(parentFiles.uploads), true);
     assert.equal(existsSync(grandFiles.logs), false);
     assert.ok(app.sessionMeta(child) !== undefined);
+
+    // The last fork that reads them goes: so do they.
+    await archive(child);
+    assert.equal((await call("/api/x/session-cleanup/remove", { ids: [child] })).status, 200);
+    assert.equal(existsSync(grandFiles.uploads), false);
+    assert.equal(existsSync(parentFiles.uploads), false);
+});
+
+test("a fork made while the removal checks the session keeps the uploads it reads", async () => {
+    const id = await newSession(app);
+
+    await say(app, id, "hello");
+    const files = filesOf(id);
+    const entryId = (await app.transcripts.allEntries(id, false)).at(-1)!.id;
+    const get = app.watches.get.bind(app.watches);
+    let fork: ConversationId | undefined;
+
+    await archive(id);
+
+    // The plan's slow steps: a person forks the session in the meantime.
+    app.watches.get = async (each) => {
+        fork ??= (await app.commands.fork(id, owner(app), { entryId })).id;
+
+        return get(each);
+    };
+
+    const done = await call("/api/x/session-cleanup/remove", { ids: [id] }).finally(() => {
+        app.watches.get = get;
+    });
+
+    assert.equal(done.data.outcomes[0].done, true);
+    assert.ok(fork !== undefined && app.sessionMeta(fork) !== undefined);
+    assert.equal(existsSync(files.uploads), true, "the fork reads them");
+});
+
+test("a fork that a removal overtakes is refused, so it never reads uploads that go", async () => {
+    const id = await newSession(app);
+
+    await say(app, id, "hello");
+    const files = filesOf(id);
+    const entryId = (await app.transcripts.allEntries(id, false)).at(-1)!.id;
+    const agentState = app.agentState.bind(app);
+
+    await archive(id);
+
+    // The fork has passed its checks; the removal commits before the fork does.
+    app.agentState = async (each) => {
+        app.agentState = agentState;
+        assert.equal((await call("/api/x/session-cleanup/remove", { ids: [id] })).status, 200);
+
+        return agentState(each);
+    };
+
+    await assert.rejects(app.commands.fork(id, owner(app), { entryId }), { status: 409 });
+    assert.equal(existsSync(files.uploads), false);
 });
 
 test("a removal that a restart cut short goes on at the next start", async () => {
@@ -244,4 +299,23 @@ test("a removal that a restart cut short goes on at the next start", async () =>
     assert.equal(existsSync(files.uploads), false);
     assert.equal(existsSync(files.logs), false);
     assert.equal((await call(`/api/c/${id}/trust`)).status, 404, "still out of the app");
+});
+
+test("an env file that git ignores keeps a worktree, also in an ignored folder", async () => {
+    const id = await worktreeSession("Secrets");
+    const env = join(app.sessionMeta(id)!.worktree!.path, "deps", "a", "prod.env");
+
+    writeFileSync(join(repo, ".git", "info", "exclude"), "deps/\n");
+    mkdirSync(join(env, ".."), { recursive: true });
+    writeFileSync(env, "KEY=1\n");
+    await archive(id);
+
+    const [plan] = (await call("/api/x/session-cleanup/plan", { ids: [id] })).data.sessions;
+    const [kept] = (await call("/api/x/session-cleanup/clean-up", { ids: [id] })).data.outcomes;
+    const [stays] = (await call("/api/x/session-cleanup/remove", { ids: [id] })).data.outcomes;
+
+    assert.equal(plan.worktree.state, "env");
+    assert.match(kept.why, /env file that git ignores/);
+    assert.equal(stays.done, false);
+    assert.ok(existsSync(env));
 });

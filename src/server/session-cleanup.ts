@@ -10,7 +10,7 @@
  */
 import { existsSync } from "node:fs";
 import { lstat, opendir, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { ConversationId, TaskId } from "@earendil-works/pi-durable";
 import type { PocketApp } from "./app.ts";
@@ -22,14 +22,18 @@ import {
     PublicLinksDoc,
     type RemovedSession,
     RepoWatchesDoc,
+    type SessionMeta,
     SessionsDoc,
 } from "./docs.ts";
 import { describe, HttpError } from "./errors.ts";
 import { git } from "./git.ts";
 import { sessionKey } from "./memory.ts";
+import { isEnvFile } from "./secrets.ts";
 import { inWorktree, removeWorktree, type Worktree } from "./worktrees.ts";
 
 const context = BACKGROUND_CONTEXT;
+
+const ENV_STAYS = "Its worktree has an env file that git ignores. Move or delete it first.";
 
 /** The most files a size counts in one folder tree: a huge one shows as at least that much. */
 const MAX_COUNTED = 200_000;
@@ -39,9 +43,10 @@ export const MAX_SESSIONS = 500;
 
 /**
  * A session's worktree, as cleaning up finds it: `clean` goes; `changes` has uncommitted changes and stays; `shared`
- * is where another session works, and stays; `busy` is where Pi works now.
+ * is where another session works, and stays; `busy` is where Pi works now; `env` holds an env file that git ignores
+ * (`git worktree remove` would delete it), and stays.
  */
-export type WorktreeState = "clean" | "changes" | "shared" | "busy";
+export type WorktreeState = "clean" | "changes" | "shared" | "busy" | "env";
 
 /** What cleaning up or removing a session would do. */
 export type SessionPlan = {
@@ -115,6 +120,66 @@ async function sizeOf(path: string): Promise<number> {
     return bytes;
 }
 
+/**
+ * Whether a worktree holds an env file (`.env`, `prod.env`) that git ignores, also inside an ignored folder:
+ * `git worktree remove` deletes such files with no word. Other ignored files (`dist`) do not count, and `node_modules`
+ * folders are not read. A worktree with more ignored files than `MAX_COUNTED` counts as having one.
+ */
+async function hasIgnoredEnv(path: string): Promise<boolean> {
+    const listed = await git(path, ["status", "--porcelain", "-z", "--ignored"]);
+    let counted = 0;
+
+    const walk = async (folder: string): Promise<boolean> => {
+        let dir;
+
+        try {
+            dir = await opendir(folder);
+        } catch {
+            return false;
+        }
+
+        for await (const entry of dir) {
+            // Too many to read them all: one may still be there, so the worktree stays, as for a git error.
+            if (++counted > MAX_COUNTED) {
+                return true;
+            }
+
+            if (isEnvFile(entry.name)) {
+                return true;
+            }
+
+            if (
+                entry.isDirectory() &&
+                entry.name !== "node_modules" &&
+                (await walk(join(folder, entry.name)))
+            ) {
+                return true;
+            }
+        }
+
+        return false;
+    };
+
+    for (const entry of listed.split("\0")) {
+        if (!entry.startsWith("!! ")) {
+            continue;
+        }
+
+        const name = entry.slice(3);
+
+        // A package's own files: an install puts them back, and they are most of the files.
+        if (name.endsWith("/") && basename(name) === "node_modules") {
+            continue;
+        }
+
+        if (name.endsWith("/") ? await walk(join(path, name)) : isEnvFile(basename(name))) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 export class SessionCleanup {
     readonly #app: PocketApp;
 
@@ -150,20 +215,32 @@ export class SessionCleanup {
         return join(this.#app.dataDir, "background", String(id));
     }
 
-    /** The sessions whose uploads a live session reads: itself, and the sessions it was forked from (`workspace.ts`). */
-    #readByForks(leaving: ReadonlySet<number>): Set<number> {
+    /**
+     * The sessions whose uploads a live session reads: itself, and the sessions it was forked from (`workspace.ts`).
+     * `items`: the sessions as a transaction reads them, instead of the app's.
+     */
+    #readByForks(leaving: ReadonlySet<number>, items?: Record<string, SessionMeta>): Set<number> {
         const read = new Set<number>();
+        const live =
+            items === undefined
+                ? this.#app.sessions().map((session) => session.id)
+                : Object.entries(items)
+                      .filter(([, meta]) => meta.pip === undefined)
+                      .map(([key]) => Number(key));
+        const forkedFrom = (id: number) =>
+            items?.[String(id)]?.forkedFrom ??
+            this.#app.forkedFrom(id as unknown as ConversationId);
 
-        for (const session of this.#app.sessions()) {
-            if (leaving.has(session.id)) {
+        for (const id of live) {
+            if (leaving.has(id)) {
                 continue;
             }
 
-            let at = this.#app.forkedFrom(session.id as unknown as ConversationId);
+            let at = forkedFrom(id);
 
             for (let depth = 0; at !== undefined && depth < 64; depth++) {
                 read.add(at.id);
-                at = this.#app.forkedFrom(at.id as unknown as ConversationId);
+                at = forkedFrom(at.id);
             }
         }
 
@@ -199,6 +276,8 @@ export class SessionCleanup {
 
             if (status.trim() !== "") {
                 state = "changes";
+            } else if (await hasIgnoredEnv(worktree.path).catch(() => true)) {
+                state = "env";
             }
         }
 
@@ -257,7 +336,9 @@ export class SessionCleanup {
                     ? "Pi is working in its worktree. Stop it first."
                     : worktree?.state === "changes"
                       ? "Its worktree has uncommitted changes. Commit or discard them first."
-                      : undefined;
+                      : worktree?.state === "env"
+                        ? ENV_STAYS
+                        : undefined;
 
         return {
             id: Number(id),
@@ -337,6 +418,14 @@ export class SessionCleanup {
                 continue;
             }
 
+            if (
+                existsSync(meta.worktree.path) &&
+                (await hasIgnoredEnv(meta.worktree.path).catch(() => true))
+            ) {
+                outcomes.push({ id: Number(id), done: false, why: ENV_STAYS });
+                continue;
+            }
+
             const bytes = await sizeOf(meta.worktree.path);
 
             try {
@@ -389,6 +478,12 @@ export class SessionCleanup {
             outcomes.set(Number(id), outcome);
         }
 
+        if (removed.size > 0) {
+            await this.#releaseUploads().catch((error: unknown) =>
+                this.#app.log(`Kept uploads could not be checked: ${describe(error)}`),
+            );
+        }
+
         return named.map((id) => outcomes.get(Number(id))!);
     }
 
@@ -413,6 +508,7 @@ export class SessionCleanup {
         const worktree =
             plan.worktree?.state === "clean" ? app.sessionMeta(id)?.worktree : undefined;
         const watchTasks: TaskId[] = [];
+        let keepUploads = false;
 
         // The plan took a while (sizes): a run that started meanwhile keeps the session.
         if (tree.some((each) => app.isBusy(each as unknown as ConversationId))) {
@@ -428,6 +524,8 @@ export class SessionCleanup {
             }
 
             delete sessions.items[String(id)];
+            // From this transaction: a fork made while the plan ran reads these uploads too.
+            keepUploads = this.#readByForks(leaving, sessions.items).has(Number(id));
             const record: RemovedSession = {
                 ...(meta.title === undefined ? {} : { title: meta.title }),
                 cwd: meta.cwd,
@@ -436,7 +534,7 @@ export class SessionCleanup {
                 by: userId,
                 at: Date.now(),
                 ...(worktree === undefined ? {} : { worktree }),
-                ...(plan.uploads.kept ? { keepUploads: [Number(id)] } : {}),
+                ...(keepUploads ? { keepUploads: [Number(id)] } : {}),
             };
 
             (await tx.doc(DeletedDoc)).items[String(id)] = record;
@@ -499,7 +597,7 @@ export class SessionCleanup {
             done: true,
             bytes:
                 (worktreeGone ? plan.worktree!.bytes : 0) +
-                (plan.uploads.kept ? 0 : plan.uploads.bytes) +
+                (keepUploads ? 0 : plan.uploads.bytes) +
                 plan.logs,
         };
     }
@@ -542,9 +640,17 @@ export class SessionCleanup {
         await step("its PR watch", () => app.watches.stop(id));
 
         if (record.worktree !== undefined) {
-            await step(`its worktree ${record.worktree.path}`, () =>
-                removeWorktree(record.worktree!, false),
-            );
+            await step(`its worktree ${record.worktree.path}`, async () => {
+                // One may have come since the plan, or before a restart.
+                if (
+                    existsSync(record.worktree!.path) &&
+                    (await hasIgnoredEnv(record.worktree!.path).catch(() => true))
+                ) {
+                    throw new Error(ENV_STAYS);
+                }
+
+                await removeWorktree(record.worktree!, false);
+            });
         }
 
         for (const each of record.conversations) {
@@ -576,7 +682,40 @@ export class SessionCleanup {
         }, context);
     }
 
-    /** At start: go on with the removals a restart cut short. */
+    /** Remove the uploads that removed sessions kept for their forks, once no session that stays reads them. */
+    async #releaseUploads(): Promise<void> {
+        const items = (await this.#app.harness.snapshot(DeletedDoc, context))?.items ?? {};
+        const read = this.#readByForks(new Set());
+
+        for (const [key, record] of Object.entries(items)) {
+            const gone: number[] = [];
+
+            for (const each of record.keepUploads ?? []) {
+                if (!read.has(each)) {
+                    await rm(this.#uploads(each), { recursive: true, force: true }).then(
+                        () => gone.push(each),
+                        (error: unknown) =>
+                            this.#app.log(`Uploads ${each} could not go: ${describe(error)}`),
+                    );
+                }
+            }
+
+            if (gone.length > 0) {
+                await this.#app.harness.commit(async (tx) => {
+                    const item = (await tx.doc(DeletedDoc)).items[key];
+                    const kept = (item?.keepUploads ?? []).filter((each) => !gone.includes(each));
+
+                    if (item !== undefined && kept.length > 0) {
+                        item.keepUploads = kept;
+                    } else if (item !== undefined) {
+                        delete item.keepUploads;
+                    }
+                }, context);
+            }
+        }
+    }
+
+    /** At start: go on with the removals a restart cut short, and remove uploads that no fork reads any more. */
     async resume(): Promise<void> {
         const items = (await this.#app.harness.snapshot(DeletedDoc, context))?.items ?? {};
 
@@ -588,5 +727,9 @@ export class SessionCleanup {
                 );
             }
         }
+
+        await this.#releaseUploads().catch((error: unknown) =>
+            this.#app.log(`Kept uploads could not be checked: ${describe(error)}`),
+        );
     }
 }
