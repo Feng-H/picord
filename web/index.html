@@ -147,6 +147,45 @@
                     line.className = "boot-detail";
                     line.textContent = detail;
                     boot.appendChild(line);
+
+                    // Self-healing: if an app script failed during boot (likely stale/incompatible SW cache),
+                    // clear shell caches so a reload fetches fresh code.
+                    if (window.caches) {
+                        caches.keys().then(function (keys) {
+                            keys.forEach(function (key) {
+                                if (key.indexOf("picord-shell-") === 0) {
+                                    caches.delete(key);
+                                }
+                            });
+                        });
+                    }
+
+                    if (!boot.querySelector(".boot-reload")) {
+                        var btn = document.createElement("button");
+                        btn.className = "boot-reload";
+                        btn.textContent = "清除缓存并刷新 (Reload)";
+                        btn.style.cssText =
+                            "margin-top:14px;padding:8px 18px;border-radius:10px;background:var(--accent,#3b82f6);color:#fff;border:none;font-size:14px;cursor:pointer;";
+                        btn.onclick = function () {
+                            if (window.caches) {
+                                caches
+                                    .keys()
+                                    .then(function (keys) {
+                                        return Promise.all(
+                                            keys.map(function (k) {
+                                                return caches.delete(k);
+                                            }),
+                                        );
+                                    })
+                                    .then(function () {
+                                        location.reload();
+                                    });
+                            } else {
+                                location.reload();
+                            }
+                        };
+                        boot.appendChild(btn);
+                    }
                 };
                 var watch = function (event) {
                     var target = event.target;

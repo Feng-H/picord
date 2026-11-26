@@ -52,14 +52,12 @@ import { fromServer } from "./seen.js";
 import { defineItem, slotItems } from "./slots.js";
 import { SubagentsBar } from "./subagents.js";
 import { TrustBar } from "./trust.js";
-import { prefs } from "./theme.js";
+import { prefs, setPrefs } from "./theme.js";
 import { fingerprint } from "./text-hash.js";
 import { says } from "./turns.js";
 import {
     MicButton,
     VoiceButton,
-    VoiceLangButton,
-    VoiceOverlay,
     useDictation,
     useVoiceMessage,
     voiceLanguage,
@@ -875,6 +873,62 @@ function channelAt(text, caret) {
     const rest = /^\S*/.exec(text.slice(caret))[0];
 
     return { start: caret - query.length - 1, end: caret + rest.length, query };
+}
+
+const VOICE_LANGS = [
+    ["auto", "the transcription's own guess", "AUTO"],
+    ["zh", "Chinese", "中"],
+    ["en", "English", "EN"],
+    ["de", "German", "DE"],
+];
+
+function VoiceLangButton({ disabled = false }) {
+    const said = voiceLanguage() || "auto";
+    const lang = VOICE_LANGS.find(([code]) => code === said) ?? VOICE_LANGS[0];
+
+    const cycle = () => {
+        const at = VOICE_LANGS.findIndex(([code]) => code === (voiceLanguage() || "auto"));
+        const next = VOICE_LANGS[(at + 1) % VOICE_LANGS.length] ?? VOICE_LANGS[0];
+
+        setPrefs({ voiceLang: next[0] });
+    };
+
+    return html`<button
+        type="button"
+        class="voice-lang"
+        aria-label=${t("Voice message language: $", t(lang[1]))}
+        title=${t("Voice message language: $", t(lang[1]))}
+        disabled=${disabled}
+        onMouseDown=${(event) => event.preventDefault()}
+        onClick=${cycle}
+    >
+        ${lang[2]}
+    </button>`;
+}
+
+function VoiceOverlay({ active, canceling, seconds = 0 }) {
+    if (!active) {
+        return null;
+    }
+
+    const clock = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+
+    return html`<div class="voice-overlay-backdrop" onContextMenu=${(event) => event.preventDefault()}>
+        <div class=${`voice-overlay-card ${canceling ? "canceling" : ""}`}>
+            <div class="voice-overlay-icon-wrap">
+                <${Icon} name=${canceling ? "close" : "mic"} size=${36} />
+            </div>
+            <div class="voice-overlay-waves">
+                <span class="wave wave-1"></span>
+                <span class="wave wave-2"></span>
+                <span class="wave wave-3"></span>
+            </div>
+            <div class="voice-overlay-timer">${clock}</div>
+            <div class="voice-overlay-tip">
+                ${canceling ? t("Release to cancel") : t("Release to send, slide up to cancel")}
+            </div>
+        </div>
+    </div>`;
 }
 
 export function Composer() {
