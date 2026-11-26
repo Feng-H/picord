@@ -150,9 +150,14 @@ import {
     watchRuleFiles,
     formatRuleStatus,
     formatRuleList,
+    appendEngineEventLog,
+    formatEngineEventNote,
     type DispatchedTask,
     type ConversationRule,
+    type EngineEvent,
 } from "./rule-engine/index.ts";
+import { NOTE_ENTRY } from "./entry-format.ts";
+import { ownRequest } from "./requests.ts";
 import { TurnPipeline } from "./turn-pipeline/index.ts";
 import { entryWords } from "./history-search.ts";
 import { CoreSecrets } from "./secrets.ts";
@@ -849,6 +854,11 @@ export class PocketApp {
                 this.#log(`rule-engine dispatched task: ${task.ruleId} for channel ${task.channel}`);
                 void this.handleRuleDispatchedTask(task).catch((err: unknown) => {
                     this.#log(`rule-engine task execution error: ${String(err)}`);
+                });
+            },
+            onEvent: (event) => {
+                void this.handleEngineEvent(event).catch((err: unknown) => {
+                    this.#log(`rule-engine event handling error: ${String(err)}`);
                 });
             },
         });
@@ -4757,6 +4767,67 @@ export class PocketApp {
                     "- `/rule status`: 查看当前频道的倒计时、增量游标与心跳状态",
                     "- `/rule reload`: 立即从磁盘重新加载规则配置文件",
                 ].join("\n");
+        }
+    }
+
+    /**
+     * Handle engine events: write to append-only log file and inject system note into channel.
+     */
+    async handleEngineEvent(event: EngineEvent): Promise<void> {
+        // 1. Channel 1: Append to event log files (.dialogue-session and dataDir)
+        const logPaths = [
+            join(process.cwd(), ".dialogue-session", "engine-events.log"),
+            join(this.dataDir, "engine-events.log"),
+        ];
+
+        for (const logPath of logPaths) {
+            try {
+                appendEngineEventLog(logPath, event);
+            } catch {}
+        }
+
+        // 2. Channel 2: Inject system note into channel conversation for key state changes
+        const inChannelEvents = new Set<string>([
+            "rule_added",
+            "rule_removed",
+            "rule_modified",
+            "rule_fired",
+            "cursor_advanced",
+        ]);
+
+        if (event.channel && inChannelEvents.has(event.type)) {
+            const channel = this.channels.get(event.channel);
+
+            if (channel) {
+                try {
+                    const conversation = await this.conversation(channel.id);
+                    const noteText = formatEngineEventNote(event);
+                    const noteRequestId = ownRequest("engine", `engine-note-${randomUUID()}`);
+                    const model = [
+                        {
+                            role: "user" as const,
+                            content: [{ type: "text" as const, text: noteText }],
+                            timestamp: Date.now(),
+                        },
+                    ];
+
+                    await conversation.submit(
+                        {
+                            type: "write",
+                            entry: {
+                                kind: NOTE_ENTRY,
+                                data: { text: noteText, by: "engine", name: "Rule Engine" },
+                                model,
+                            },
+                            requestId: noteRequestId,
+                        },
+                        BACKGROUND_CONTEXT,
+                    );
+                    this.#log(`rule-engine: injected [engine] note into #${channel.name}`);
+                } catch (err: unknown) {
+                    this.#log(`rule-engine: failed to inject note into #${channel.name}: ${String(err)}`);
+                }
+            }
         }
     }
 }

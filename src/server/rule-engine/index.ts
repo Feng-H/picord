@@ -1,5 +1,5 @@
-import { existsSync, readFileSync, writeFileSync, watch, type FSWatcher } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync, writeFileSync, appendFileSync, mkdirSync, watch, type FSWatcher } from "node:fs";
+import { join, dirname } from "node:path";
 
 /**
  * Conversation Rule Engine
@@ -7,6 +7,23 @@ import { join } from "node:path";
  * A deterministic server subsystem evaluating declarative triggers (such as Silence Triggers)
  * against channel activity, decoupling automation from probabilistic LLM tool management.
  */
+
+export type EngineEventType =
+    | "rule_added"
+    | "rule_removed"
+    | "rule_modified"
+    | "schedule_projected"
+    | "rule_fired"
+    | "engine_version_changed"
+    | "cursor_advanced";
+
+export interface EngineEvent {
+    timestamp: number;
+    type: EngineEventType;
+    ruleId?: string;
+    channel?: string;
+    details: Record<string, unknown>;
+}
 
 export interface PromptRuleAction {
     type: "prompt";
@@ -195,6 +212,92 @@ export function watchRuleFiles(
 }
 
 /**
+ * Append an engine event entry to the JSONL engine-events.log file.
+ */
+export function appendEngineEventLog(filePath: string, event: EngineEvent): void {
+    try {
+        const dir = dirname(filePath);
+
+        if (!existsSync(dir)) {
+            mkdirSync(dir, { recursive: true });
+        }
+
+        const record = {
+            timestamp: event.timestamp,
+            time: new Date(event.timestamp).toISOString(),
+            type: event.type,
+            ruleId: event.ruleId,
+            channel: event.channel,
+            details: event.details,
+        };
+
+        appendFileSync(filePath, `${JSON.stringify(record)}\n`, "utf8");
+    } catch {}
+}
+
+/**
+ * Format an engine event into a concise human-readable system note.
+ */
+export function formatEngineEventNote(event: EngineEvent): string {
+    const channelTag = event.channel ? `[#${event.channel.replace(/^#/, "")}] ` : "";
+    const ruleTag = event.ruleId ?? "";
+
+    switch (event.type) {
+        case "rule_added": {
+            const title = (event.details.title as string) || ruleTag;
+            const after = (event.details.after as string) || "";
+
+            return `[engine] 规则 "${title}" 已添加至频道 #${event.channel} (静默 ${after} 触发)`;
+        }
+
+        case "rule_removed": {
+            const title = (event.details.title as string) || ruleTag;
+
+            return `[engine] 规则 "${title}" 已从频道 #${event.channel} 移除`;
+        }
+
+        case "rule_modified": {
+            const title = (event.details.title as string) || ruleTag;
+            const after = (event.details.after as string) || "";
+
+            return `[engine] 规则 "${title}" 已更新 (静默 ${after} 触发)`;
+        }
+
+        case "schedule_projected": {
+            const title = (event.details.title as string) || ruleTag;
+            const next = typeof event.details.next === "number" ? new Date(event.details.next).toLocaleTimeString("sv") : "";
+            const remaining = typeof event.details.remainingMs === "number" ? Math.round(event.details.remainingMs / 60000) : undefined;
+            const remStr = remaining !== undefined ? ` (约 ${String(remaining)} 分钟后到期)` : "";
+
+            return `[engine] 倒计时已刷新：${title} 到期时间为 ${next}${remStr}`;
+        }
+
+        case "rule_fired": {
+            const cursor = event.details.cursorEntryId ?? 0;
+            const head = event.details.headEntryId ?? 0;
+            const fwd = event.details.forwardToChannel ? ` -> 转发至 #${String(event.details.forwardToChannel).replace(/^#/, "")}` : "";
+
+            return `[engine] 规则 ${ruleTag} 已触发，增量游标 (${String(cursor)}, ${String(head)}]${fwd}`;
+        }
+
+        case "cursor_advanced": {
+            const newCursor = event.details.newCursorId ?? 0;
+
+            return `[engine] 游标推进：${ruleTag} 游标已推进至 #${String(newCursor)}`;
+        }
+
+        case "engine_version_changed": {
+            const ver = (event.details.version as string) || "unknown";
+
+            return `[engine] 规则引擎已加载/更新，版本 ${ver}`;
+        }
+
+        default:
+            return `[engine] ${channelTag}${event.type}: ${ruleTag}`;
+    }
+}
+
+/**
  * Format active rule status for human consumption (/rule status).
  */
 export function formatRuleStatus(engine: ConversationRuleEngine, now = Date.now()): string {
@@ -240,7 +343,33 @@ export function formatRuleStatus(engine: ConversationRuleEngine, now = Date.now(
             .join("\n");
     });
 
-    return `⏱️ **对话规则引擎运行时状态 (${rules.length}条生效)**:\n\n${sections.join("\n\n")}`;
+    const projectedLines: string[] = [];
+
+    for (const rule of rules) {
+        const state = engine.getState(rule.id);
+
+        if (state?.lastActivity) {
+            const afterMs = parseDuration(rule.after);
+            const next = state.lastActivity + afterMs;
+            const remainingMs = Math.max(0, next - now);
+            const remainingMin = Math.round(remainingMs / 60000);
+            const timeStr = new Date(next).toLocaleTimeString("sv");
+            const scheduleId = `rule-silence-${rule.id}`;
+
+            projectedLines.push(
+                `- **${rule.title || rule.id}** (\`${scheduleId}\`):\n` +
+                `  - 规则ID: \`${rule.id}\` | 所属频道: \`#${rule.channel}\`\n` +
+                `  - 到点时间: ${timeStr} (剩余约 ${String(remainingMin)} 分钟)\n` +
+                `  - 当前状态: ${remainingMs > 0 ? "运行中" : "已到期待触发"}`,
+            );
+        }
+    }
+
+    const projectedBlock = projectedLines.length > 0
+        ? `\n\n### ⏱️ 引擎投影定时任务 (Projected Schedules):\n\n${projectedLines.join("\n\n")}`
+        : "";
+
+    return `⏱️ **对话规则引擎运行时状态 (${rules.length}条生效)**:\n\n${sections.join("\n\n")}${projectedBlock}`;
 }
 
 /**
@@ -360,18 +489,21 @@ export interface ConversationRuleEngineOptions {
     rules?: ConversationRule[];
     store?: RuleEngineStore;
     onDispatch?: (task: DispatchedTask) => Promise<void> | void;
+    onEvent?: (event: EngineEvent) => Promise<void> | void;
 }
 
 export class ConversationRuleEngine {
     #rules: ConversationRule[];
     readonly #store: RuleEngineStore;
     readonly #onDispatch?: (task: DispatchedTask) => Promise<void> | void;
+    readonly #onEvent?: (event: EngineEvent) => Promise<void> | void;
     readonly #states = new Map<string, RuleRuntimeState>();
 
     constructor(options: ConversationRuleEngineOptions = {}) {
         this.#rules = [...(options.rules ?? [])];
         this.#store = options.store ?? new InMemoryRuleEngineStore();
         this.#onDispatch = options.onDispatch;
+        this.#onEvent = options.onEvent;
 
         for (const rule of this.#rules) {
             this.#validateRule(rule);
@@ -384,11 +516,72 @@ export class ConversationRuleEngine {
     }
 
     /**
+     * Emit an engine event to external listeners.
+     */
+    emitEvent(event: EngineEvent): void {
+        if (this.#onEvent) {
+            try {
+                void this.#onEvent(event);
+            } catch {}
+        }
+    }
+
+    /**
      * Reload rules dynamically without losing active state, timers, or cursors.
      */
     reloadRules(newRules: ConversationRule[]): void {
         for (const rule of newRules) {
             this.#validateRule(rule);
+        }
+
+        const oldRules = this.#rules;
+        const oldMap = new Map(oldRules.map((r) => [r.id, r]));
+        const newMap = new Map(newRules.map((r) => [r.id, r]));
+
+        // 1. rule_added diff
+        for (const [id, r] of newMap) {
+            if (!oldMap.has(id)) {
+                this.emitEvent({
+                    timestamp: Date.now(),
+                    type: "rule_added",
+                    ruleId: id,
+                    channel: r.channel,
+                    details: { title: r.title, after: r.after, action: r.action },
+                });
+            }
+        }
+
+        // 2. rule_removed diff
+        for (const [id, r] of oldMap) {
+            if (!newMap.has(id)) {
+                this.emitEvent({
+                    timestamp: Date.now(),
+                    type: "rule_removed",
+                    ruleId: id,
+                    channel: r.channel,
+                    details: { title: r.title, after: r.after },
+                });
+            }
+        }
+
+        // 3. rule_modified diff
+        for (const [id, newR] of newMap) {
+            const oldR = oldMap.get(id);
+
+            if (oldR && JSON.stringify(oldR) !== JSON.stringify(newR)) {
+                this.emitEvent({
+                    timestamp: Date.now(),
+                    type: "rule_modified",
+                    ruleId: id,
+                    channel: newR.channel,
+                    details: {
+                        title: newR.title,
+                        after: newR.after,
+                        before: oldR,
+                        afterRule: newR,
+                    },
+                });
+            }
         }
 
         this.#rules = [...newRules];
@@ -471,6 +664,22 @@ export class ConversationRuleEngine {
 
                 this.#states.set(rule.id, current);
                 this.#store.saveState(rule.id, current);
+
+                const afterMs = parseDuration(rule.after);
+                const next = timestamp + afterMs;
+
+                this.emitEvent({
+                    timestamp,
+                    type: "schedule_projected",
+                    ruleId: rule.id,
+                    channel: rule.channel,
+                    details: {
+                        title: rule.title || rule.id,
+                        next,
+                        remainingMs: afterMs,
+                        scheduleId: `rule-silence-${rule.id}`,
+                    },
+                });
             }
         }
     }
@@ -487,6 +696,16 @@ export class ConversationRuleEngine {
             current.cursorEntryId = newCursorId;
             this.#states.set(ruleId, current);
             this.#store.saveState(ruleId, current);
+
+            const rule = this.#rules.find((r) => r.id === ruleId);
+
+            this.emitEvent({
+                timestamp: Date.now(),
+                type: "cursor_advanced",
+                ruleId,
+                channel: rule?.channel,
+                details: { prevCursorId: prev, newCursorId },
+            });
 
             return true;
         }
@@ -530,6 +749,20 @@ export class ConversationRuleEngine {
                 };
 
                 dispatched.push(task);
+
+                this.emitEvent({
+                    timestamp: now,
+                    type: "rule_fired",
+                    ruleId: rule.id,
+                    channel: rule.channel,
+                    details: {
+                        cursorEntryId: state.cursorEntryId,
+                        headEntryId: state.headEntryId,
+                        forwardToChannel: rule.action.forwardToChannel,
+                        archiveFile: rule.action.archiveFile,
+                        instruction: rule.action.instruction,
+                    },
+                });
 
                 if (this.#onDispatch) {
                     await this.#onDispatch(task);
