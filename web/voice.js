@@ -559,9 +559,20 @@ export function useVoiceMessage(onRecording) {
             recorder: null,
             mime: "",
             chunks: [],
+            began: 0,
+            starting: false,
+            pendingStop: null,
+            startGen: 0,
             /** End the recording: `send` hands it on, anything else drops it. */
             stop(send) {
                 void releaseWakeLock();
+
+                if (this.starting) {
+                    this.pendingStop = send ? "send" : "cancel";
+
+                    return;
+                }
+
                 const recorder = this.recorder;
 
                 if (!recorder || recorder.state === "inactive") {
@@ -569,6 +580,7 @@ export function useVoiceMessage(onRecording) {
                 }
 
                 this.recorder = null;
+                this.began = 0;
 
                 const chunks = this.chunks;
                 const mime = this.mime;
@@ -591,7 +603,11 @@ export function useVoiceMessage(onRecording) {
                         setState("sending");
 
                         Promise.resolve(
-                            hear.current(new Blob(chunks, { type: mime.split(";")[0] })),
+                            hear.current(
+                                new Blob(chunks, {
+                                    type: (mime || "audio/webm").split(";")[0],
+                                }),
+                            ),
                         )
                             .catch(() => {})
                             .finally(() => setState("idle"));
@@ -616,6 +632,10 @@ export function useVoiceMessage(onRecording) {
                 recorder.onstop = once;
 
                 try {
+                    recorder.requestData?.();
+                } catch {}
+
+                try {
                     recorder.stop();
                 } catch {
                     once();
@@ -625,23 +645,48 @@ export function useVoiceMessage(onRecording) {
                 setTimeout(once, 2000);
             },
             start() {
+                if (this.starting || this.recorder) {
+                    return;
+                }
+
                 const mime = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find((each) =>
                     MediaRecorder.isTypeSupported(each),
                 );
 
-                if (mime === undefined) {
-                    notify("error", "This browser cannot record audio for a voice message.");
-
-                    return;
-                }
+                this.starting = true;
+                this.pendingStop = null;
+                const gen = ++this.startGen;
 
                 navigator.mediaDevices
                     .getUserMedia({ audio: true })
                     .then((stream) => {
-                        const recorder = new MediaRecorder(stream, { mimeType: mime });
+                        this.starting = false;
 
-                        // A slice a second: the audio is ours even if the stop never fires (iOS).
-                        this.mime = mime;
+                        if (gen !== this.startGen || this.pendingStop !== null) {
+                            const action = this.pendingStop;
+
+                            this.pendingStop = null;
+
+                            for (const track of stream.getTracks?.() ?? []) {
+                                track.stop();
+                            }
+
+                            if (action === "send") {
+                                notify(
+                                    "info",
+                                    "The recording came out empty. Tap the mic and try again.",
+                                );
+                            }
+
+                            return;
+                        }
+
+                        const recorder = mime
+                            ? new MediaRecorder(stream, { mimeType: mime })
+                            : new MediaRecorder(stream);
+
+                        // A slice every 250ms: even brief voice clips capture chunks reliably (iOS Safari included).
+                        this.mime = recorder.mimeType || mime || "audio/webm";
                         this.chunks = [];
 
                         recorder.ondataavailable = (event) => {
@@ -651,12 +696,15 @@ export function useVoiceMessage(onRecording) {
                         };
 
                         this.recorder = recorder;
-                        recorder.start(1000);
+                        this.began = Date.now();
+                        recorder.start(250);
                         void requestWakeLock();
-                        setBegan(Date.now());
+                        setBegan(this.began);
                         setState("recording");
                     })
                     .catch(() => {
+                        this.starting = false;
+                        this.pendingStop = null;
                         notify(
                             "error",
                             "No microphone found, or its use is blocked for this site.",
@@ -668,9 +716,9 @@ export function useVoiceMessage(onRecording) {
 
     useEffect(() => {
         const hidden = () => {
-            if (document.hidden && self.current?.recorder) {
+            if (document.hidden && (self.current?.recorder || self.current?.starting)) {
                 // If recording has been active for more than 500ms, preserve and send it rather than discarding
-                const elapsed = began > 0 ? Date.now() - began : 0;
+                const elapsed = self.current.began > 0 ? Date.now() - self.current.began : 0;
 
                 self.current.stop(elapsed >= 500);
             }
@@ -682,7 +730,7 @@ export function useVoiceMessage(onRecording) {
             document.removeEventListener("visibilitychange", hidden);
             self.current.stop(false);
         };
-    }, [began]);
+    }, []);
 
     return {
         state,

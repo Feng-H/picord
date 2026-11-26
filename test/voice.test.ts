@@ -7,7 +7,10 @@ const STUBS: Record<string, string> = {
     "preact/hooks": `
         export const useState = (initial) => [typeof initial === "function" ? initial() : initial, () => {}];
         export const useRef = (current) => ({ current });
-        export const useEffect = (effect) => globalThis.voiceCleanups.push(effect());
+        export const useEffect = (effect, deps) => {
+            globalThis.voiceEffectDeps.push(deps);
+            globalThis.voiceCleanups.push(effect());
+        };
     `,
     "./store.js": `export const notify = () => {}; export const store = { state: { appearance: {} } };`,
     "./ui.js": `export const html = () => null; export const Icon = () => null; export const Spinner = () => null;`,
@@ -42,6 +45,7 @@ type Voice = {
 const recognitions: Recognition[] = [];
 
 (globalThis as Record<string, unknown>).voiceCleanups = [];
+(globalThis as Record<string, unknown>).voiceEffectDeps = [];
 (globalThis as Record<string, unknown>).document = {
     activeElement: null,
     hidden: false,
@@ -181,4 +185,122 @@ test("VoiceLangButton renders without error", () => {
     const VoiceLangButton = (voice as unknown as { VoiceLangButton: (props: { disabled?: boolean }) => unknown }).VoiceLangButton;
 
     assert.doesNotThrow(() => VoiceLangButton({ disabled: false }));
+});
+
+test("useVoiceMessage keeps recording alive across start and sends blob on stop(true)", async () => {
+    type MockRecorder = {
+        mimeType: string;
+        state: string;
+        stream: { getTracks: () => { stop: () => void }[] };
+        ondataavailable: ((event: { data: Blob }) => void) | null;
+        onstop: (() => void) | null;
+        start: (ms?: number) => void;
+        requestData: () => void;
+        stop: () => void;
+    };
+
+    const tracksStopped: number[] = [];
+    const createdRecorders: MockRecorder[] = [];
+    const fakeStream = {
+        getTracks: () => [{ stop: () => tracksStopped.push(1) }],
+    };
+
+    (globalThis as Record<string, unknown>).MediaRecorder = class {
+        static isTypeSupported = (mime: string) => mime === "audio/webm";
+        mimeType: string;
+        state = "inactive";
+        stream: typeof fakeStream;
+        ondataavailable: ((event: { data: Blob }) => void) | null = null;
+        onstop: (() => void) | null = null;
+
+        constructor(stream: typeof fakeStream, opts?: { mimeType?: string }) {
+            this.stream = stream;
+            this.mimeType = opts?.mimeType ?? "audio/webm";
+            createdRecorders.push(this);
+        }
+
+        start() {
+            this.state = "recording";
+        }
+
+        requestData() {
+            this.ondataavailable?.({ data: new Blob(["hello-audio"], { type: "audio/webm" }) });
+        }
+
+        stop() {
+            this.state = "inactive";
+            this.onstop?.();
+        }
+    };
+
+    Object.defineProperty(globalThis, "navigator", {
+        value: {
+            mediaDevices: {
+                getUserMedia: () => Promise.resolve(fakeStream),
+            },
+        },
+        configurable: true,
+    });
+
+    const effectDeps = (globalThis as unknown as { voiceEffectDeps: (unknown[] | undefined)[] })
+        .voiceEffectDeps;
+
+    effectDeps.length = 0;
+
+    const sentBlobs: Blob[] = [];
+    const useVoiceMessage = (
+        voice as unknown as {
+            useVoiceMessage: (onRecording: (blob: Blob) => Promise<void> | void) => {
+                start: () => void;
+                stop: (send?: boolean) => void;
+                cancel: () => void;
+            };
+        }
+    ).useVoiceMessage;
+
+    const controller = useVoiceMessage((blob) => {
+        sentBlobs.push(blob);
+    });
+
+    // Regression check: visibilitychange effect must mount once (`[]`) so setBegan() does not abort recording.
+    assert.deepEqual(effectDeps, [[]]);
+
+    controller.start();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    assert.equal(createdRecorders.length, 1);
+    assert.equal(createdRecorders[0]!.state, "recording");
+
+    controller.stop(true);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    assert.equal(sentBlobs.length, 1, "recorded audio blob is handed to onRecording");
+    assert.ok(sentBlobs[0]!.size > 0, "recorded audio blob is non-empty");
+    assert.equal(tracksStopped.length, 1, "microphone track is released after stop");
+
+    // Cancel must discard without calling onRecording.
+    controller.start();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    controller.cancel();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.equal(sentBlobs.length, 1, "cancel discards recording");
+
+    // Canceling while getUserMedia is still pending stops tracks cleanly on resolution.
+    let resolveMedia!: (stream: typeof fakeStream) => void;
+
+    (globalThis.navigator as unknown as { mediaDevices: { getUserMedia: () => Promise<typeof fakeStream> } }).mediaDevices.getUserMedia =
+        () =>
+            new Promise((resolve) => {
+                resolveMedia = resolve;
+            });
+
+    const tracksBefore = tracksStopped.length;
+
+    controller.start();
+    controller.cancel();
+    resolveMedia(fakeStream);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.equal(tracksStopped.length, tracksBefore + 1, "pending stream tracks are stopped cleanly");
+
+    unmountAll();
 });

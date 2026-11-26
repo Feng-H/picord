@@ -1585,7 +1585,8 @@ export function Composer() {
     const [pressing, setPressing] = useState(false);
     const [canceling, setCanceling] = useState(false);
     const [pressSeconds, setPressSeconds] = useState(0);
-    const pressStartRef = useRef({ time: 0, y: 0, timer: null });
+    const pressStartRef = useRef({ active: false, canceling: false, time: 0, y: 0, timer: null });
+    const voiceSending = voice.state === "sending";
 
     useEffect(() => {
         return () => {
@@ -1597,7 +1598,7 @@ export function Composer() {
     }, []);
 
     const onPressStart = (event) => {
-        if (event.button !== undefined && event.button !== 0) {
+        if ((event.button !== undefined && event.button !== 0) || sending || voiceSending) {
             return;
         }
 
@@ -1615,7 +1616,13 @@ export function Composer() {
 
         const now = Date.now();
 
+        if (pressStartRef.current.timer) {
+            clearInterval(pressStartRef.current.timer);
+        }
+
         pressStartRef.current = {
+            active: true,
+            canceling: false,
             time: now,
             y: event.clientY,
             timer: setInterval(() => {
@@ -1630,14 +1637,15 @@ export function Composer() {
     };
 
     const onPressMove = (event) => {
-        if (!pressing) {
+        if (!pressStartRef.current.active) {
             return;
         }
 
         const deltaY = pressStartRef.current.y - event.clientY;
 
         if (deltaY > 50) {
-            if (!canceling) {
+            if (!pressStartRef.current.canceling) {
+                pressStartRef.current.canceling = true;
                 setCanceling(true);
 
                 try {
@@ -1645,14 +1653,15 @@ export function Composer() {
                 } catch {}
             }
         } else if (deltaY <= 40) {
-            if (canceling) {
+            if (pressStartRef.current.canceling) {
+                pressStartRef.current.canceling = false;
                 setCanceling(false);
             }
         }
     };
 
     const onPressEnd = (event) => {
-        if (!pressing) {
+        if (!pressStartRef.current.active) {
             return;
         }
 
@@ -1666,7 +1675,10 @@ export function Composer() {
         }
 
         const duration = Date.now() - pressStartRef.current.time;
-        const isCancel = canceling;
+        const isCancel = pressStartRef.current.canceling;
+
+        pressStartRef.current.active = false;
+        pressStartRef.current.canceling = false;
 
         setPressing(false);
         setCanceling(false);
@@ -1687,7 +1699,7 @@ export function Composer() {
     };
 
     const onPressCancel = (event) => {
-        if (!pressing) {
+        if (!pressStartRef.current.active) {
             return;
         }
 
@@ -1701,12 +1713,16 @@ export function Composer() {
         }
 
         const duration = Date.now() - pressStartRef.current.time;
+        const isCancel = pressStartRef.current.canceling;
+
+        pressStartRef.current.active = false;
+        pressStartRef.current.canceling = false;
 
         setPressing(false);
         setCanceling(false);
         setPressSeconds(0);
 
-        if (canceling || duration < 500) {
+        if (isCancel || duration < 500) {
             voice.cancel();
         } else {
             voice.stop(true);
@@ -2804,22 +2820,29 @@ export function Composer() {
                             ? html`<div class="voice-press-wrapper" data-part="voice-press-wrapper">
                                 <button
                                     type="button"
-                                    class=${`voice-press-bar ${pressing ? "pressing" : ""} ${canceling ? "canceling" : ""}`}
+                                    class=${`voice-press-bar ${pressing ? "pressing" : ""} ${canceling ? "canceling" : ""} ${voiceSending ? "sending" : ""}`}
                                     data-part="voice-press-bar"
+                                    disabled=${sending || voiceSending}
                                     onPointerDown=${onPressStart}
                                     onPointerMove=${onPressMove}
                                     onPointerUp=${onPressEnd}
                                     onPointerCancel=${onPressCancel}
                                     onContextMenu=${(event) => event.preventDefault()}
                                 >
-                                    <${Icon} name="mic" size=${18} class="voice-press-icon" />
+                                    ${
+                                        voiceSending
+                                            ? html`<${Spinner} hidden=${true} />`
+                                            : html`<${Icon} name="mic" size=${18} class="voice-press-icon" />`
+                                    }
                                     <span class="voice-press-text">
                                         ${
-                                            pressing
-                                                ? canceling
-                                                    ? t("Release to cancel")
-                                                    : t("Release to send, slide up to cancel")
-                                                : t("Hold to Talk")
+                                            voiceSending
+                                                ? t("Sending the voice message")
+                                                : pressing
+                                                  ? canceling
+                                                      ? t("Release to cancel")
+                                                      : t("Release to send, slide up to cancel")
+                                                  : t("Hold to Talk")
                                         }
                                     </span>
                                 </button>
