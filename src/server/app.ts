@@ -898,6 +898,12 @@ export class PocketApp {
                 authorName: "Rule Engine",
             };
         });
+
+        this.ruleEngine.emitEvent({
+            timestamp: Date.now(),
+            type: "engine_version_changed",
+            details: { version: this.build, pid: process.pid },
+        });
     }
 
     /**
