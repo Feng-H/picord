@@ -27,14 +27,13 @@ const rebased = {
 };
 
 /**
- * As `rebased`, and a change that deletes a whole item (`items.<id>`) is a base too: the storage drops the revisions
- * before it, so what was deleted (an artifact, its share, its saved state, its comments: `artifacts.ts`) is not kept in
- * them. A smaller delete, such as one person's saved state, stays a delta.
+ * A change that deletes a whole item (`items.<id>`) is a base too: the storage drops the revisions before it, so what
+ * was deleted (`artifacts.ts`) is not kept in them.
  */
 const rebasedOnDelete = {
     checkpointWhen: (_value: unknown, ops: unknown, info: CheckpointInfo) =>
         info.deltasSinceBase >= 64 ||
-        (ops as readonly (readonly [string, readonly unknown[] | undefined])[]).some(
+        (ops as readonly (readonly [string, (readonly unknown[])?])[]).some(
             (op) => op[0] === "d" && (op[1]?.length ?? 0) <= 2,
         ),
 };
@@ -629,6 +628,10 @@ export type Schedule = {
     revision?: number;
     /** Paused by a person: it sends nothing until someone resumes it. When, and by whom. */
     paused?: { at: number; by: string };
+    /** Summarize everything before the message it sent last, before each sending (`schedules.ts`). */
+    compactBefore?: true;
+    /** While this schedule compacts: another schedule of the session does not compact meanwhile. */
+    compacting?: true;
 };
 
 /** Messages that go to Pi later, or on repeat. A fork starts without them: they belong to who set them up. */

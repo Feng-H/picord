@@ -874,6 +874,7 @@ export class Room {
                         paused,
                         skipped,
                         skippedAt,
+                        compactBefore,
                     }) => ({
                         id,
                         version: String(revision ?? 0),
@@ -886,6 +887,7 @@ export class Room {
                         ...(skipped === undefined ? {} : { skipped, skippedAt }),
                         createdAt,
                         ...(paused === undefined ? {} : { paused: paused.at, pausedBy: paused.by }),
+                        ...(compactBefore === true ? { compactBefore } : {}),
                     }),
                 ),
                 ...(this.#app.ruleEngine?.activeSchedulesForSession(

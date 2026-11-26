@@ -80,9 +80,11 @@ English: the whole interface speaks Chinese; a chip switches at once, per browse
 
 ## 运行 / Run
 
-与上游一致:Node.js ≥ 22.19,无构建步骤。语音转文字需配置 `GROQ_API_KEY`。
+与上游一致：Node.js ≥ 22.19，无构建步骤。语音转文字需配置 `GROQ_API_KEY`。
 
 ```bash
+git clone https://github.com/Feng-H/picord.git
+cd picord
 npm install
 node bin/pi-pocket.js
 ```

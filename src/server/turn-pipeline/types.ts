@@ -94,6 +94,7 @@ export interface StandardTurnAdapter {
     dispatchDurable(input: {
         conversationId: ConversationId;
         actor: User;
+        text: string;
         content: string | Array<TextContent | ImageContent>;
         whenBusy: "steer" | "followUp";
         allowInterrupt: boolean;

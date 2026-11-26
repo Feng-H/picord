@@ -100,6 +100,7 @@ import {
 } from "./host.ts";
 import { type GuardStatus, LancetGuard } from "./lancet.ts";
 import { takeLock } from "./lock.ts";
+import { pendingApprovalsFor } from "./pending-approvals.ts";
 import { Memory } from "./memory.ts";
 import type { ChannelManager } from "./channels.ts";
 import { DialogueRuntime } from "./dialogue-runtime.ts";
@@ -129,6 +130,7 @@ import { measureModelStreams } from "./timing.ts";
 import { Providers } from "./providers.ts";
 import { CustomProviders } from "./custom-providers.ts";
 import { type EmbedderMessage, PushStore } from "./push.ts";
+import { writeDropInConfig } from "./dropin-config.ts";
 import { type ExtensionInfo, ExtensionLoader, linkTypes, prepareDropInFolder } from "./reload.ts";
 import { ResendTask } from "./resend.ts";
 import {
@@ -148,6 +150,7 @@ import { BackgroundTasks } from "./background.ts";
 import { SessionCleanup } from "./session-cleanup.ts";
 import { Shares } from "./share.ts";
 import { CommandEnvs, HiddenValues, wrapEnv } from "./hidden.ts";
+import { TurnNotes } from "./turn-notes.ts";
 import { withQuietLimit } from "./deadline.ts";
 import { AppEventBus } from "./app-events.ts";
 import { changeSettings, shownSettings } from "./extension-settings.ts";
@@ -472,6 +475,7 @@ export class PocketApp {
     );
     /** What extensions add to the environment of each command (`hidden.ts`, `host.commandEnv`). */
     readonly commandEnvs = new CommandEnvs((line) => this.#log(line));
+    readonly turnNotes = new TurnNotes(this);
     /** Other people's drop-ins, from a reviewed index: found, installed off, read, updated, removed (`gallery.ts`). */
     readonly gallery = new Gallery(this);
     /** Updates of Pi Pocket itself: the newest release, and updating to it (`updates.ts`). */
@@ -959,6 +963,7 @@ export class PocketApp {
         const host: PocketHost = {
             guard: this.guard,
             approvals: this.approvals,
+            pendingApprovals: pendingApprovalsFor(this),
             agentDir: getAgentDir(),
             dataDir: this.dataDir,
             pocketVersion: pocketVersion(),
@@ -996,6 +1001,7 @@ export class PocketApp {
             ask: (request, askContext) => ask(this.approvals, request, askContext),
             hide: (value) => this.hidden.add(value),
             commandEnv: (provider) => this.commandEnvs.add(provider),
+            annotateTurns: (name, annotate) => this.turnNotes.add(name, annotate),
             browser: (conversationId, options) =>
                 browserFor(
                     this.browsers,
@@ -1048,20 +1054,29 @@ export class PocketApp {
 
         this.#registry = registry;
         const dropIn = join(this.dataDir, "extensions");
+        const packageModules = Object.fromEntries(
+            Object.keys(pocketPackage.dependencies ?? {}).map((name) => [name, modulesWith(name)]),
+        );
 
         try {
-            prepareDropInFolder(
+            const refused = prepareDropInFolder(
                 dropIn,
                 modulesWith("@earendil-works/pi-durable"),
-                Object.fromEntries(
-                    Object.keys(pocketPackage.dependencies ?? {}).map((name) => [
-                        name,
-                        modulesWith(name),
-                    ]),
-                ),
+                packageModules,
             );
+
+            // Drop-ins import Pi Pocket's packages without the link: only tools that read the folder miss it.
+            if (refused !== undefined) {
+                this.#log(`The drop-in folder has no node_modules link: ${describe(refused)}`);
+            }
         } catch (error) {
-            this.#log(`Drop-in extensions cannot import Pi Pocket's packages: ${describe(error)}`);
+            this.#log(`The drop-in folder cannot be made: ${describe(error)}`);
+        }
+
+        try {
+            writeDropInConfig(dropIn, packageModules);
+        } catch (error) {
+            this.#log(`The drop-in folder has no tsconfig.json: ${describe(error)}`);
         }
 
         try {

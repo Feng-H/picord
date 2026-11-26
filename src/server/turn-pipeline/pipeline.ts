@@ -259,6 +259,7 @@ export class TurnPipeline {
         const dispatched = await adapter.dispatchDurable({
             conversationId,
             actor,
+            text: media.said,
             content,
             whenBusy,
             allowInterrupt: steering.allowInterrupt && options?.via === undefined,

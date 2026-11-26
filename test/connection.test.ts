@@ -341,3 +341,116 @@ test("EventConnection switchSession drops residual events from previous session 
     assert.equal(events[3]?.name, "chat");
     assert.deepEqual(events[3]?.data, { text: "fresh msg in session 2" });
 });
+
+test("EventConnection forwards extended SSE events and retries silent initial local stream", () => {
+    const env = new FakeEnv();
+    const events: { name: string; data: unknown }[] = [];
+
+    const connection = new EventConnection({
+        env: {
+            now: env.now,
+            setTimeout: env.setTimeout as any,
+            clearTimeout: env.clearTimeout as any,
+            setInterval: env.setInterval as any,
+            clearInterval: env.clearInterval as any,
+            EventSource: env.getEventSourceClass() as any,
+            storage: new Map() as any,
+        },
+        url: () => "/api/events",
+        isLocal: () => true,
+        onEvent: (name: string, data: unknown) => events.push({ name, data }),
+    });
+
+    connection.connect();
+    assert.equal(env.eventSources.length, 1);
+
+    // No ping or event arrives within 10s FIRST_DATA_MS -> local stream is replaced
+    env.advance(10_000);
+    assert.equal(env.eventSources.length, 2);
+
+    const source2 = env.eventSources[1]!;
+
+    source2.simulateEvent("notice", { level: "info", message: "hi" });
+    source2.simulateEvent("pip", { working: true });
+    assert.deepEqual(
+        events.map((item) => item.name),
+        ["notice", "pip"],
+    );
+
+    connection.disconnect();
+});
+
+test("EventConnection aborts a hung long poll using hold timing", async () => {
+    const env = new FakeEnv();
+    const storage = new Map<string, string>([["pocket.transport", `poll:${env.nowTime}`]]);
+    const events: { name: string; data: unknown }[] = [];
+    let pollCalls = 0;
+
+    const connection = new EventConnection({
+        env: {
+            now: env.now,
+            setTimeout: env.setTimeout as any,
+            clearTimeout: env.clearTimeout as any,
+            setInterval: env.setInterval as any,
+            clearInterval: env.clearInterval as any,
+            EventSource: env.getEventSourceClass() as any,
+            fetch: (async (input: string, init?: { signal?: AbortSignal }) => {
+                if (String(input).includes("close=1")) {
+                    return { status: 200, ok: true, async json() { return {}; } };
+                }
+
+                pollCalls++;
+
+                if (pollCalls === 1) {
+                    return {
+                        status: 200,
+                        ok: true,
+                        async json() {
+                            return {
+                                session: "poll-1",
+                                hold: 300,
+                                events: [{ seq: 1, event: "reload", data: {} }],
+                            };
+                        },
+                    };
+                }
+
+                if (pollCalls === 2) {
+                    return await new Promise((_, reject) => {
+                        init?.signal?.addEventListener("abort", () =>
+                            reject(new Error("aborted")),
+                        );
+                    });
+                }
+
+                return {
+                    status: 200,
+                    ok: true,
+                    async json() {
+                        connection.disconnect();
+
+                        return { session: "poll-1", hold: 300, events: [] };
+                    },
+                };
+            }) as any,
+            storage: storage as any,
+        },
+        url: () => "/api/events",
+        isLocal: () => false,
+        onEvent: (name: string, data: unknown) => events.push({ name, data }),
+    });
+
+    connection.connect();
+    // Let first poll complete and second poll start + stall timer register
+    await new Promise((r) => setTimeout(r, 10));
+    assert.equal(pollCalls, 2);
+
+    // hold=300 => pollStallMs(300) = 2450ms -> abort second poll and advance 1s retry backoff
+    env.advance(2500);
+    await new Promise((r) => setTimeout(r, 10));
+    env.advance(1000);
+    await new Promise((r) => setTimeout(r, 10));
+
+    assert.equal(pollCalls, 3);
+    assert.deepEqual(events, [{ name: "reload", data: {} }]);
+});

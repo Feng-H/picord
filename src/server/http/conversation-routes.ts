@@ -1,13 +1,14 @@
 /** `/api/c/:id`: one conversation's routes, for people the API has checked may see it. */
 import { randomUUID } from "node:crypto";
-import { constants, createWriteStream, rmSync } from "node:fs";
-import { type FileHandle, open } from "node:fs/promises";
+import { createWriteStream, rmSync } from "node:fs";
+import type { FileHandle } from "node:fs/promises";
 import { basename, extname, join, resolve, sep } from "node:path";
 import { pipeline } from "node:stream/promises";
 import type { ConversationId } from "@earendil-works/pi-durable";
 import { readState, writeState } from "../artifact-state.ts";
 import { deleteArtifact } from "../artifacts.ts";
 import { outcome } from "../background.ts";
+import { openNoFollow } from "../no-follow.ts";
 import type { Attachment, SubmitRequest } from "../commands.ts";
 import { HttpError } from "../errors.ts";
 import type { CommandRequest } from "../extension-commands.ts";
@@ -502,7 +503,7 @@ export async function conversationRoutes(
         let handle: FileHandle;
 
         try {
-            handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
+            handle = await openNoFollow(file);
         } catch {
             throw new HttpError(404, "File not found");
         }

@@ -130,10 +130,12 @@ export async function login(
     const form = posted
         ? new URLSearchParams((await readBody(request, 10_000)).toString("utf8"))
         : url.searchParams;
-
+    // A one-time link from the desktop app (`/login?once=…`) is spent here, whatever happens next.
+    const once = form.get("once");
     const username = form.get("username")?.trim() ?? "";
     const password = form.get("password") ?? "";
-    const token = form.get("token")?.trim() ?? "";
+    const token =
+        (once === null ? form.get("token")?.trim() : auth.redeemSignInLink(once)) ?? "";
     const next = localPath(form.get("next"));
 
     // Case 1: Username & Password POST login
@@ -156,7 +158,7 @@ export async function login(
         return;
     }
 
-    // Case 2: Token-based login (via link or token form)
+    // Case 2: Token-based login (via one-time link or token form)
     if (token) {
         const signingIn = auth.tokenUser(token);
 
@@ -171,7 +173,8 @@ export async function login(
 
         const current = auth.user(request);
 
-        if (!posted && current !== undefined && current.id !== signingIn.id) {
+        // A one-time link is the owner's own app window, which signs in as the owner without prompting.
+        if (!posted && once === null && current !== undefined && current.id !== signingIn.id) {
             return send(
                 response,
                 200,
@@ -191,7 +194,20 @@ export async function login(
         return;
     }
 
-    // Case 3: Empty POST without credentials
+    // Case 3: Expired or spent one-time desktop link (GET or POST)
+    if (once !== null) {
+        return send(
+            response,
+            401,
+            page(
+                "Picord",
+                `<h1>Link expired</h1><p>This one-time sign-in link was used already, or it is more than a minute old. Open Picord again from its icon in the menu bar or the notification area.</p>`,
+            ),
+            "text/html; charset=utf-8",
+        );
+    }
+
+    // Case 4: POST without valid credentials
     if (posted) {
         return send(
             response,
@@ -201,7 +217,7 @@ export async function login(
         );
     }
 
-    // Case 4: Normal GET /login page
+    // Case 5: Normal GET /login page
     return send(
         response,
         200,
@@ -229,7 +245,7 @@ export async function register(
         : url.searchParams;
 
     const code = form.get("code")?.trim() ?? "";
-    const username = form.get("username")?.trim() ?? "";
+    const username = (form.get("username") ?? "").replace(/\s+/g, " ").trim().slice(0, 40);
     const password = form.get("password") ?? "";
     const confirmPassword = form.get("confirmPassword") ?? "";
 
@@ -342,7 +358,7 @@ export async function join(
 ): Promise<void> {
     if (request.method === "POST") {
         if (crossSite(request)) {
-            throw new HttpError(403, "Join from Pi Pocket's own page.");
+            throw new HttpError(403, "Join from Picord's own page.");
         }
 
         const form = new URLSearchParams((await readBody(request, 10_000)).toString("utf8"));

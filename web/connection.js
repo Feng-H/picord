@@ -4,8 +4,69 @@
  */
 
 const TRANSPORT_KEY = "pocket.transport";
-const POLL_FOR_MS = 60 * 60 * 1000;
+const POLL_FOR_MS = 24 * 60 * 60_000;
+const FIRST_DATA_MS = 10_000;
+const FIRST_POLL_MS = 60_000;
 const SESSION_EVENTS = new Set(["view", "chat", "notes", "presence", "browser", "missing"]);
+const KNOWN_EVENTS = [
+    "hello",
+    "sessions",
+    "folder-favorites",
+    "models",
+    "themes",
+    "subagents",
+    "view",
+    "switched",
+    "pip",
+    "pipview",
+    "chat",
+    "presence",
+    "notes",
+    "browser",
+    "peek",
+    "users",
+    "memory",
+    "missing",
+    "ext",
+    "notice",
+    "auth",
+    "embedder-notify",
+    "closing",
+    "reload",
+    "stream",
+    "settings",
+    "spend",
+    "limits",
+];
+
+function pollStallMs(hold) {
+    return hold * 1.5 + 2000;
+}
+
+async function readJson(response, progress) {
+    if (!response.body?.getReader) {
+        return await response.json();
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let text = "";
+
+    while (true) {
+        const { done, value } = await reader.read();
+
+        if (done) {
+            break;
+        }
+
+        text += decoder.decode(value, { stream: true });
+        progress();
+    }
+
+    text += decoder.decode();
+
+    return JSON.parse(text);
+}
 
 export class EventConnection {
     #env;
@@ -23,8 +84,12 @@ export class EventConnection {
     #pingMs = 15_000;
     #heardAt = 0;
     #pings = 0;
+    #quietStreams = 0;
+    #heardAny = false;
     #watchdogTimer = null;
     #fallbackTimer = null;
+    #firstDataTimer = null;
+    #pollStallTimer = null;
     #retryTimer = null;
     #streamRetries = 0;
     #settled = false;
@@ -110,6 +175,13 @@ export class EventConnection {
 
     #shouldPoll() {
         const raw = this.#storageGet(TRANSPORT_KEY) ?? "";
+
+        if (raw === "poll") {
+            this.#setPollMode();
+
+            return true;
+        }
+
         const [mode, at] = raw.split(":");
 
         return mode === "poll" && this.#env.now() - Number(at) < POLL_FOR_MS;
@@ -138,6 +210,7 @@ export class EventConnection {
         this.#heardAt = this.#env.now();
         this.#settled = false;
         this.#pings = 0;
+        this.#heardAny = false;
 
         const usePoll = this.#shouldPoll() && !this.#isLocal();
 
@@ -157,9 +230,12 @@ export class EventConnection {
 
         const url = typeof this.#url === "function" ? this.#url(this, "stream") : this.#url;
         const events = new this.#env.EventSource(url);
+        const named = this.#activeSession;
+        const settles = named !== null ? ["view", "missing"] : ["sessions"];
         const connection = {
             close: () => {
                 this.#env.clearTimeout(this.#fallbackTimer);
+                this.#env.clearTimeout(this.#firstDataTimer);
                 this.#env.clearInterval(this.#watchdogTimer);
                 events.close();
             },
@@ -179,11 +255,29 @@ export class EventConnection {
             }, 6000);
         }
 
+        // Initial silence watchdog: a stream that hears nothing at all must not stall at "connecting"
+        this.#firstDataTimer = this.#env.setTimeout(
+            () => {
+                if (this.#heardAny || this.#currentSource !== connection) {
+                    return;
+                }
+
+                this.#streamRetries++;
+                this.connect();
+            },
+            Math.min(60_000, FIRST_DATA_MS * (this.#streamRetries + 1)),
+        );
+
         const startWatchdog = () => {
             this.#env.clearInterval(this.#watchdogTimer);
             this.#watchdogTimer = this.#env.setInterval(() => {
                 if (this.#currentSource === connection && this.isSilent(2.5)) {
-                    if (!this.#isLocal() && this.#settled && this.#pings <= 1) {
+                    if (
+                        !this.#isLocal() &&
+                        this.#settled &&
+                        this.#pings <= 1 &&
+                        ++this.#quietStreams >= 2
+                    ) {
                         this.#setPollMode();
                     }
 
@@ -197,6 +291,10 @@ export class EventConnection {
         }
 
         events.addEventListener("ping", (event) => {
+            if (this.#currentSource !== connection) {
+                return;
+            }
+
             let data = null;
 
             try {
@@ -205,7 +303,7 @@ export class EventConnection {
                 data = null;
             }
 
-            if (typeof data?.every === "number") {
+            if (typeof data?.every === "number" && data.every > 0) {
                 this.#pingPeriod = data.every;
 
                 if (this.#pingMs !== this.#pingPeriod) {
@@ -215,35 +313,22 @@ export class EventConnection {
             }
 
             this.#pings++;
+            this.#heardAny = true;
+
+            if (this.#pings > 1) {
+                this.#quietStreams = 0;
+            }
+
             this.#heardAt = this.#env.now();
         });
 
-        // Any custom or standard events registered on the connection
-        const knownEvents = [
-            "hello",
-            "sessions",
-            "view",
-            "chat",
-            "notes",
-            "presence",
-            "browser",
-            "missing",
-            "stream",
-            "switched",
-            "auth",
-            "settings",
-            "spend",
-            "limits",
-            "models",
-            "ext",
-        ];
-
-        for (const name of knownEvents) {
+        for (const name of KNOWN_EVENTS) {
             events.addEventListener(name, (event) => {
                 if (this.#currentSource !== connection) {
                     return;
                 }
 
+                this.#heardAny = true;
                 this.#heardAt = this.#env.now();
 
                 let data = null;
@@ -254,7 +339,7 @@ export class EventConnection {
                     data = event.data;
                 }
 
-                if (name === "view" || name === "sessions" || name === "missing") {
+                if (settles.includes(name)) {
                     this.#settled = true;
                 }
 
@@ -289,6 +374,12 @@ export class EventConnection {
 
             this.#setStatus("closed");
 
+            if (named !== this.#activeSession) {
+                this.connect();
+
+                return;
+            }
+
             if (this.#checkAuth) {
                 const authed = await this.#checkAuth().catch(() => true);
 
@@ -300,17 +391,23 @@ export class EventConnection {
                 }
             }
 
-            // Retry after error with backoff
-            this.#env.clearTimeout(this.#fallbackTimer);
-            this.#streamRetries++;
-            this.#retryTimer = this.#env.setTimeout(
-                () => {
-                    if (this.#currentSource === connection) {
-                        this.connect();
-                    }
-                },
-                Math.min(10_000, 1000 * this.#streamRetries),
-            );
+            // Retry only when EventSource permanently closed (otherwise browser retries natively)
+            const closedState = this.#env.EventSource?.CLOSED ?? 2;
+
+            if (events.readyState === closedState && this.#currentSource === connection) {
+                this.#env.clearTimeout(this.#fallbackTimer);
+                this.#env.clearTimeout(this.#firstDataTimer);
+                this.#env.clearTimeout(this.#retryTimer);
+                this.#streamRetries++;
+                this.#retryTimer = this.#env.setTimeout(
+                    () => {
+                        if (this.#currentSource === connection) {
+                            this.connect();
+                        }
+                    },
+                    Math.min(10_000, 1000 * this.#streamRetries),
+                );
+            }
         };
     }
 
@@ -318,11 +415,13 @@ export class EventConnection {
         let stopped = false;
         let session = null;
         let ack = 0;
+        let hold = 25_000;
         let requestController = null;
 
         const connection = {
             close: () => {
                 stopped = true;
+                this.#env.clearTimeout(this.#pollStallTimer);
                 requestController?.abort();
 
                 if (session && this.#env.fetch) {
@@ -342,10 +441,25 @@ export class EventConnection {
             let failures = 0;
 
             while (!stopped && this.#currentSource === connection) {
+                requestController = new AbortController();
+
+                const quiet = (ms) => {
+                    this.#env.clearTimeout(this.#pollStallTimer);
+                    const asking = requestController;
+
+                    this.#pollStallTimer = this.#env.setTimeout(() => asking?.abort(), ms);
+                };
+
+                quiet(
+                    (session === null ? FIRST_POLL_MS : pollStallMs(hold)) *
+                        2 ** Math.min(failures, 4),
+                );
+
                 try {
                     const fetchFn = this.#env.fetch;
 
                     if (!fetchFn) {
+                        this.#env.clearTimeout(this.#pollStallTimer);
                         break;
                     }
 
@@ -358,14 +472,13 @@ export class EventConnection {
                           : raw;
                     const pollUrl = `/api/poll?${query}${session ? `&session=${session}&ack=${ack}` : ""}`;
 
-                    requestController = new AbortController();
-
                     const response = await fetchFn(pollUrl, {
                         signal: requestController.signal,
                         cache: "no-store",
                     });
 
                     if (response.status === 401) {
+                        this.#env.clearTimeout(this.#pollStallTimer);
                         stopped = true;
                         this.#setStatus("closed");
                         this.#onAuthRequired();
@@ -377,15 +490,24 @@ export class EventConnection {
                         throw new Error(`HTTP ${response.status}`);
                     }
 
-                    const data = await response.json();
+                    quiet(pollStallMs(hold));
+                    const data = await readJson(response, () => quiet(pollStallMs(hold)));
+
+                    this.#env.clearTimeout(this.#pollStallTimer);
 
                     if (stopped || this.#currentSource !== connection) {
                         return;
                     }
 
+                    if (typeof data.hold === "number" && data.hold > 0) {
+                        hold = data.hold;
+                    }
+
                     if (data.session !== session) {
                         session = data.session;
                         ack = 0;
+                        this.#switching = null;
+                        this.#switchSeq++;
                     }
 
                     failures = 0;
@@ -414,6 +536,8 @@ export class EventConnection {
                         }
                     }
                 } catch {
+                    this.#env.clearTimeout(this.#pollStallTimer);
+
                     if (stopped || this.#currentSource !== connection) {
                         return;
                     }
@@ -458,6 +582,8 @@ export class EventConnection {
         }
 
         this.#env.clearTimeout(this.#fallbackTimer);
+        this.#env.clearTimeout(this.#firstDataTimer);
+        this.#env.clearTimeout(this.#pollStallTimer);
         this.#env.clearTimeout(this.#retryTimer);
         this.#env.clearInterval(this.#watchdogTimer);
     }
