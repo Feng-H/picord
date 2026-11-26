@@ -4274,98 +4274,60 @@ pre.diff .del {
     color: var(--warn);
 }
 
-/* A narrow message box (a narrow pane, or a phone) gives up the level first, then, while Pi works and Steer and Queue
- * take room, Plan and the sparkle: the model's name stays. */
-@container composer (max-width: 340px) {
-    .model-chip .model-level {
-        display: none;
-    }
-}
-
-@container composer (max-width: 540px) {
-    .composer.busy .model-chip .model-level {
-        display: none;
-    }
-}
-
-@container composer (max-width: 400px) {
-    .composer.busy :is(.plan-chip, .model-caret) {
-        display: none;
-    }
-}
-
-@container composer (max-width: 355px) {
-    .composer.busy .model-chip .model-spark {
-        display: none;
-    }
-}
-
-/* The buttons that extensions add to the row: any number of them can come. Where they would push Send (or Stop) out of a
- * narrow box (two or more up to 480 px, one up to 340 px), they take a line of their own under the row, where they stay
- * while Pi works. The break is the row's `::after`: a line of no height, so only the buttons' margin parts the lines. A
- * wrapping row breaks before an item that is too wide, not after shrinking one: the model asks for no room, so Send
- * stays on the first line, then takes what is left, up to its whole name. */
-@container composer (max-width: 480px) {
-    .composer-row:has(.ext-composer-button ~ .ext-composer-button) {
+/* On phones and narrow panes (<= 520px), split the composer toolbar into two breathable rows:
+ * Row 1 (order 0): thumb actions (Voice/Keyboard toggle, Places, Attach, ModePick/VoiceLang, Send/Stop)
+ * Row 2 (order 2): status/setting chips (Model + thinking level, Plan, extensions) with full room and zero crowding.
+ * Wide desktop panes (> 520px) keep everything on a single horizontal row. */
+@container composer (max-width: 520px) {
+    .composer-row {
         flex-wrap: wrap;
         row-gap: 0;
     }
 
-    .composer-row:has(.ext-composer-button ~ .ext-composer-button) .model-chip {
-        flex: 100 1 0;
-        max-width: max-content;
-    }
-
-    .composer-row:has(.ext-composer-button ~ .ext-composer-button)::after {
+    .composer-row::after {
         content: "";
         order: 1;
         flex-basis: 100%;
         height: 0;
     }
 
-    .composer-row:has(.ext-composer-button ~ .ext-composer-button) .ext-composer-button {
+    .composer-row :is(.model-chip, .plan-chip, .ext-composer-button) {
         order: 2;
-        margin-top: 4px;
+        margin-top: 6px;
+    }
+
+    .composer-row .model-chip {
+        flex: 0 1 auto;
+        max-width: 100%;
+        height: 28px;
+        padding: 0 9px;
+        font-size: 12.5px;
+    }
+
+    .composer-row .plan-chip {
+        height: 28px;
+    }
+
+    .composer-row .voice-lang {
+        margin-right: 0;
+        height: 28px;
+        padding: 0 9px;
+        border-radius: var(--r-pill);
+        font-size: 11px;
+        display: inline-flex;
+        align-items: center;
     }
 }
 
-@container composer (max-width: 340px) {
-    .composer-row:has(.ext-composer-button) {
-        flex-wrap: wrap;
-        row-gap: 0;
+@container composer (max-width: 360px) {
+    .composer.busy .voice-mode-toggle {
+        padding: 0 8px;
     }
 
-    .composer-row:has(.ext-composer-button) .model-chip {
-        flex: 100 1 0;
-        max-width: max-content;
-    }
-
-    .composer-row:has(.ext-composer-button)::after {
-        content: "";
-        order: 1;
-        flex-basis: 100%;
-        height: 0;
-    }
-
-    .composer-row:has(.ext-composer-button) .ext-composer-button {
-        order: 2;
-        margin-top: 4px;
-    }
-}
-
-/* One button, on its line in the row: while Pi works it steps aside on a narrow box, so Steer, Queue, Interrupt, and
- * Stop stay inside it. It shows again after. */
-@container composer (340px < width <= 480px) {
-    .composer.busy
-        .composer-row:not(:has(.ext-composer-button ~ .ext-composer-button))
-        .ext-composer-button {
+    .composer.busy .voice-mode-label {
         display: none;
     }
-}
 
-/* On a screen up to 360 px wide (an iPhone SE is 320 px; a 360 px screen's box is 334 px), Attach goes while Pi works,
- * so the model keeps room for its name beside the mode button and Stop. Attach comes back when Pi stops. */
-@container composer (max-width: 340px) {
     .composer.busy .composer-row .attach-button {
         display: none;
     }
@@ -4374,7 +4336,7 @@ pre.diff .del {
 /* Whatever else takes room in the row, Stop, Send, and the mic keep theirs, and the three modes give way: their labels
  * are cut before Stop leaves the box. Cut sideways only: a touch screen's taller tap layer (`::before`, below) reaches
  * above and below each mode, and a clip there would take it away. */
-.composer.busy .composer-row :is(.stop-button, .send-button, .composer-mic) {
+.composer.busy .composer-row :is(.stop-button, .send-button, .composer-mic, .voice-mode-toggle, .voice-lang) {
     flex: none;
 }
 
@@ -5978,15 +5940,6 @@ pre.diff .del {
     color: var(--accent);
     border-color: var(--accent-line, var(--accent));
     background: color-mix(in srgb, var(--accent) 10%, var(--hover));
-}
-
-@container composer (max-width: 340px) {
-    .voice-mode-toggle {
-        padding: 0 8px;
-    }
-    .voice-mode-label {
-        display: none;
-    }
 }
 
 /* Floating overlay for mobile push-to-talk */
@@ -17190,12 +17143,7 @@ textarea.notes {
     /* Room for it: the model's name gives way first. */
     .composer-row .model-chip {
         flex: 0 1 auto;
-        padding-inline: 6px;
-    }
-    /* While Pi works, Steer and Queue take the plan chip's place (`/plan` still turns plan mode on or off). */
-    .composer.busy .plan-chip,
-    .composer.busy .model-caret {
-        display: none;
+        padding-inline: 8px;
     }
     .mode-switch button {
         padding-inline: 8px;
@@ -17513,6 +17461,8 @@ textarea.notes {
             .model-chip,
             .plan-chip,
             .mode-pick-button,
+            .voice-mode-toggle,
+            .voice-lang,
             .composer-mic,
             .stop-button,
             .send-button
@@ -17526,6 +17476,8 @@ textarea.notes {
             .model-chip,
             .plan-chip,
             .mode-pick-button,
+            .voice-mode-toggle,
+            .voice-lang,
             .composer-mic,
             .stop-button,
             .send-button
@@ -17535,7 +17487,7 @@ textarea.notes {
         inset: -4px -2px;
     }
     /* The chips are shorter: their layers reach further up and down. */
-    .composer-row :is(.model-chip, .plan-chip, .mode-pick-button)::before {
+    .composer-row :is(.model-chip, .plan-chip, .mode-pick-button, .voice-mode-toggle, .voice-lang)::before {
         inset: -5px -2px;
     }
     /* The modes in its menu, a thumb's height each. */
