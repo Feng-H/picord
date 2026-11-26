@@ -126,7 +126,7 @@ test("the page carries the icon address of the colors in the cookie, and no othe
 
     assert.equal(
         iconAddress(request("a=1; pocket_icon=070707.000.b0b0b0.b6b6b6.b9b9b9"), dataDir),
-        "/app-icon.png?frame=070707&card=000&ring1=b0b0b0&ring2=b6b6b6&pi=b9b9b9&size=180",
+        "/app-icon.png?frame=070707&card=000&ring1=b0b0b0&ring2=b6b6b6&pi=b9b9b9&size=180&v=20261126",
     );
     assert.equal(iconAddress(request(), dataDir), null, "no cookie");
     assert.equal(iconAddress(request("pocket_icon=zz"), dataDir), null, "not colors");

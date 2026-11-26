@@ -87,11 +87,11 @@ export function iconRoute(request: IncomingMessage, response: ServerResponse, ur
         throw new HttpError(400, "Colors are 3 or 6 hex digits");
     }
 
-    // The colors are in the address, so a copy never goes stale.
+    // Cache for 24h; URL carries `v=` so any future icon redesign rolls out immediately.
     response.writeHead(200, {
         "content-type": "image/png",
         "content-length": png.length,
-        "cache-control": "public, max-age=31536000, immutable",
+        "cache-control": "public, max-age=86400",
     });
     response.end(request.method === "HEAD" ? undefined : png);
 }
@@ -143,9 +143,19 @@ export function appleTouchIcon(
     return true;
 }
 
+const ICON_VERSION = "20261126";
+
 const address = (colors: string[], size: number, maskable = false) => {
     const [frame, card, ring1, ring2, pi] = colors as [string, string, string, string, string];
-    const query = new URLSearchParams({ frame, card, ring1, ring2, pi, size: String(size) });
+    const query = new URLSearchParams({
+        frame,
+        card,
+        ring1,
+        ring2,
+        pi,
+        size: String(size),
+        v: ICON_VERSION,
+    });
 
     if (maskable) {
         query.set("maskable", "1");

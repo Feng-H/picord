@@ -276,7 +276,7 @@ export function serveApp(
     // The home-screen icon in the colors this browser chose, in the page as it is served (`http/icon-route.ts`).
     if (icon !== null) {
         body = body.replace(
-            '<link rel="apple-touch-icon" href="/apple-touch-icon.png" />',
+            /<link rel="apple-touch-icon" href="\/apple-touch-icon\.png(?:\?[^"]*)?" \/>/,
             () => `<link rel="apple-touch-icon" href="${icon}" />`,
         );
     }

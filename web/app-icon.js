@@ -63,6 +63,7 @@ const homeIconUrl = (vars) => {
         ring2: color("--o-green"),
         pi: color("--o-orange"),
         size: String(APPLE),
+        v: "20261126",
     });
 
     return `/app-icon.png?${query}`;

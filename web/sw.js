@@ -2,7 +2,7 @@
 // approval from its notification, opens the right session when one is tapped, and hands things shared to Pi Pocket
 // from other apps to the page. It caches static shell assets to provide instant startup, while updating in background.
 
-const SHELL_CACHE = "picord-shell-v4";
+const SHELL_CACHE = "picord-shell-v5";
 /** Where shared things wait until the page picks them up; see `web/share.js`. */
 const SHARE_CACHE = "pocket-share";
 
@@ -313,7 +313,11 @@ self.addEventListener("fetch", (event) => {
             return;
         }
 
-        if (url.pathname.endsWith(".css") || url.pathname.endsWith(".js")) {
+        if (
+            url.pathname.endsWith(".css") ||
+            url.pathname.endsWith(".js") ||
+            url.pathname.endsWith(".webmanifest")
+        ) {
             event.respondWith(networkFirst(event.request));
 
             return;
@@ -324,8 +328,7 @@ self.addEventListener("fetch", (event) => {
             url.pathname.endsWith(".woff2") ||
             url.pathname.endsWith(".svg") ||
             url.pathname.endsWith(".png") ||
-            url.pathname.endsWith(".ico") ||
-            url.pathname.endsWith(".webmanifest")
+            url.pathname.endsWith(".ico")
         ) {
             event.respondWith(staleWhileRevalidate(event.request));
         }

@@ -19,7 +19,7 @@ function localPath(next: string | null): string {
 }
 
 function page(title: string, body: string): string {
-    return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="dark"><title>${escapeHtml(title)}</title><link rel="icon" type="image/svg+xml" href="/favicon.svg?v=20261124c"><link rel="icon" type="image/x-icon" href="/favicon.ico?v=20261124c" sizes="any"><link rel="apple-touch-icon" href="/apple-touch-icon.png?v=20261124c"><link rel="stylesheet" href="/style.css"></head><body class="plain-page"><main class="plain">${body}</main></body></html>`;
+    return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="dark"><title>${escapeHtml(title)}</title><link rel="icon" type="image/svg+xml" href="/favicon.svg?v=20261126"><link rel="icon" type="image/x-icon" href="/favicon.ico?v=20261126" sizes="any"><link rel="apple-touch-icon" href="/apple-touch-icon.png?v=20261126"><link rel="stylesheet" href="/style.css"></head><body class="plain-page"><main class="plain">${body}</main></body></html>`;
 }
 
 function renderLoginPage(options: {
