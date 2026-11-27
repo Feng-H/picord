@@ -418,7 +418,9 @@ export function repoDocsLoader(options = {}) {
             });
         },
     };
-}const META = /^Since (\d+\.\d+\.\d+) · (Stable|Experimental|Deprecated)\b(.*)$/;
+}
+
+const META = /^Since (\d+\.\d+\.\d+) · (Stable|Experimental|Deprecated)\b(.*)$/;
 
 /** The Sätteri plugin for the pages: one instance per file, so it knows where its relative links start. */
 export function repoMarkdown({ fileURL }) {
