@@ -45,9 +45,12 @@
 4. **提交信息用英文**,符合仓库现有风格;**推送后必须盯 CI 到绿**再收工。
 5. 无显示环境跑不了浏览器 UI 测试(Chromium 会话会失败,属环境限制):
    用 `npm run test:server` 与 HTTP 脚本验证。
-6. 界面以中文为主;界面文案在 `web/i18n.js`(中英对照表)。
-7. TypeScript 用 Node strip-types 运行;本地类型检查:
+6. 界面以中文为主；界面文案在 `web/i18n.js`（中英对照表）。
+7. TypeScript 用 Node strip-types 运行；本地类型检查：
    `NODE_OPTIONS=--max-old-space-size=1024 npx tsc --noEmit -p .`
+8. **项目级 skill 在 `.agents/skills/`**（mattpocock/skills 全集 39 个，随仓库走，两台机器
+   git 同步即得）。Pi/T3 自动发现；其他 agent 不自动识别时，直接读对应目录的
+   `SKILL.md`。来源与更新方式见 `.agents/skills/README.md`。
 
 ## 五、进行中 / 待办(交接时快照)
 
@@ -57,9 +60,18 @@
 - 远期(仓库外档案 `/home/ubuntu/T3code/commmander/PI-POCKET.md`,在 VPS 上):
   Hermes cron 迁移(二期)、Hermes skills 分类(三期)
 
-## 六、交接协议(双向)
+## 六、交接协议（双向）
 
-### MacBook → VPS(用户说「我们到 VPS 上开发」时执行)
+### 并行开发模式（用户声明开 worktree 时）
+
+- 用户明确说「开 worktree / 分别开发」后：**双方各自建 feature 分支**（如
+  `feat/<功能名>`），**都不直接推 main**；
+- **合并权在用户指定的一方**：由它把分支 merge 进 main、push、并更新本文件
+  「当前状态/进行中」两节；
+- 另一方在得知合并后 `git pull origin main` 同步，再继续后续开发；
+- T3 Code 线程可直接用 worktree 模式；独立 CLI 用 `git worktree add`。
+
+### MacBook → VPS（用户说「我们到 VPS 上开发」时执行）
 
 1. **全部工作** commit 并 push 到 `main`(提交信息英文;别留未提交改动)。
 2. **更新本文件**:改写「二、当前状态」与「五、进行中」两节——改了什么、
