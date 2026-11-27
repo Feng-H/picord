@@ -1,10 +1,12 @@
 # Architecture
 
-How Pi Pocket's parts depend on each other, and the orderings the code relies on. [map.md](map.md) says where things are; this says what to keep when changing them.
+How Picord's parts depend on each other, and the orderings the code relies on. [map.md](map.md) says where things are; this says what to keep when changing them.
+
+> **重大历史摘要**：在原版 `Pi Durable` 事件源架构上，Picord 陆续抽离了 `DialogueRuntime`（协调层）、`TurnPipeline`（消息/命令流水线）、`HistorySearchEngine`、`EventConnection` 与声明式规则引擎，并将默认访问模型从全员共享改为默认私有隔离；详见 [重大演进历史](changelog-history.md)。
 
 ## Durable truth and what memory keeps
 
-Pi Durable owns the lasting state of conversations: conversations, entries, tasks, and Pi Pocket's documents (`docs.ts`), in `pocket.sqlite`. People and settings, push subscriptions, uploads, and worktrees are files beside it ([map.md](map.md#data-pi-pocket-or-pi_pocket_dir)). What `PocketApp` keeps in memory about conversations is read back from storage:
+Pi Durable owns the lasting state of conversations: conversations, entries, tasks, and Picord's documents (`docs.ts`), in `pocket.sqlite`. People and settings, push subscriptions, uploads, and worktrees are files beside it ([map.md](map.md#data-picord-or-pi_pocket_dir)). What `PocketApp` keeps in memory about conversations is read back from storage:
 
 - At startup, `#recover` reads each conversation's run, agent, chat, subagents, and who Pi works for in it.
 - After that, every stored commit goes through `#committed`, which keeps the memory up to date.

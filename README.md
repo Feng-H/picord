@@ -92,5 +92,5 @@ node bin/pi-pocket.js
 ## 原型与许可 / Origins & license
 
 - 本项目由衷致敬 Tanner Middleton 的开源项目 [pi-pocket](https://github.com/TannerMidd/pi-pocket)（MIT 许可）。我们在其优雅的 Agent 运行时基础上独立演进，去除了外部聊天平台中继依赖，将 Discord 频道交互原生内置到自托管 Web/PWA 中，打造真正自由自主的个人智能体第二大脑。
-- 原项目英文 README：[README-UPSTREAM.md](./README-UPSTREAM.md)
+- 原项目英文 README：见上游仓库首页 [pi-pocket](https://github.com/TannerMidd/pi-pocket#readme)（未随本 fork 保存）
 - MIT License。再次感谢 [@TannerMidd](https://github.com/TannerMidd) 的出色工作。

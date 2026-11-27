@@ -18,5 +18,4 @@ Thank you for your help. This page tells how to send a change.
 ## Send it
 
 - Open a pull request with a short title, and a brief note: what changed, why, and what you tested.
-- Maintainers merge with a merge commit, so your commits keep your name. A ready pull request goes into the open release branch: it comes out in the next beta and in Friday's release ([docs/releases.md](docs/releases.md)).
-- A release pull request's description is the release notes: [docs/release-notes.md](docs/release-notes.md) tells how to write them.
+- Keep `npm run check`, `npm run lint`, and `npm run test:server` passing; update [docs/changelog-history.md](docs/changelog-history.md) when landing major user-facing milestones.

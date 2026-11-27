@@ -1,10 +1,12 @@
-# Running Pi Pocket
+# Running Picord
 
-For the first launch, see the [quick start](../README-UPSTREAM.md#quick-start). This guide covers updates, Android, remote access, and reverse proxies.
+For the first launch, see [README.md](../README.md) or the [systemd service guide](systemd.md). This guide covers updates, Android, remote access, and reverse proxies.
+
+> **重大历史摘要**：运行时已完成 `picord` 更名（原 `pi-pocket` 入口保留兼容），默认停用从上游自动拉取更新以免覆盖定制分支；新增 `PI_POCKET_PUBLIC_URL` 支持推送与反向代理外网链接生成，详见 [重大演进历史](changelog-history.md)。
 
 ## Updates and backups
 
-Menu → **Update Pi Pocket** updates a git checkout run with `npm start`, or a global npm install (`npm install -g pi-pocket`) that your user can write, and restarts. It goes back by itself if the new version does not start ([features](features.md)). A local install (`npm install pi-pocket` in a project) and `npx pi-pocket` do not update from the app: the sheet says what to run, `npm install pi-pocket@latest` or `npx pi-pocket@latest`. By hand: stop the server, back up `~/.pi-pocket`, pull, run `npm install`, and start again; for a global install, run `npm install -g pi-pocket@latest`. If the machine stops at the very moment of the switch, `pi-pocket` may not start; `npm install -g pi-pocket` restores it. Read the [release notes](https://github.com/TannerMidd/pi-pocket/releases) first: 0.21.0 and 0.28.0 upgrade the data one way, so going back needs the backup.
+Menu → **Update Picord** updates a git checkout run with `npm start`, or a global npm install (`npm install -g picord`) that your user can write, and restarts. It goes back by itself if the new version does not start ([features](features.md)). A local install (`npm install picord` in a project) and `npx picord` do not update from the app: the sheet says what to run, `npm install picord@latest` or `npx picord@latest`. By hand: stop the server, back up `~/.picord`, pull, run `npm install`, and start again.
 
 ## Android (Termux)
 
@@ -12,8 +14,8 @@ Menu → **Update Pi Pocket** updates a git checkout run with `npm start`, or a 
 pkg update && pkg upgrade && pkg install nodejs git
 npm install -g --ignore-scripts @earendil-works/pi-coding-agent
 pi    # /login, then quit
-git clone https://github.com/TannerMidd/pi-pocket.git
-cd pi-pocket && npm install --ignore-scripts && termux-wake-lock && npm start
+git clone https://github.com/Feng-H/picord.git
+cd picord && npm install --ignore-scripts && termux-wake-lock && npm start
 ```
 
 Lancet Guard may not load on Android. If it is on but fails, start with `PI_POCKET_GUARD=off`.

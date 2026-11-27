@@ -258,7 +258,7 @@ These can change in any release: the words of errors and notices, timing that th
 
 - Pi Pocket is young. Its public API is small, and it will grow.
 - The rules on this page are in force before 1.0. They can change in a minor release. A change that gives authors less is told as a breaking change is.
-- Pi Durable is experimental (see Limitations in the [README](../../../README-UPSTREAM.md#limitations)).
+- Pi Durable is experimental (see Limitations in [features.md](../../features.md#limitations)).
 - At 1.0, Pi Pocket plans to follow semantic versioning: breaking changes only in a major release. This page will say so then.
 
 ## Deprecation

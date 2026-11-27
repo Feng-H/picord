@@ -1,4 +1,4 @@
-// Pi Pocket's docs: Starlight, at https://tannermidd.github.io/pi-pocket/docs/, beside the product site (site/).
+// Picord's docs: Starlight, at https://feng-h.github.io/picord/docs/, beside the product site (site/).
 import { copyFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { defineConfig } from "astro/config";

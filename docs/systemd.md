@@ -2,11 +2,13 @@
 
 Picord ships a systemd template unit at [`contrib/systemd/picord@.service`](../contrib/systemd/picord@.service). The instance name is the access mode, so one file starts the server in any mode:
 
+> **重大历史摘要**：2026-11-27 全面统一服务名称、数据目录与模板单元为 `picord`（`picord@.service` / `/var/lib/picord`），正式替代早期的 `pi-pocket@.service`，详见 [重大演进历史](changelog-history.md)。
+
 ```bash
 sudo systemctl enable --now picord@lan
 ```
 
-The modes are `local`, `lan`, `cloudflare`, `tailscale`, and `tailscale-serve`. [Remote access](../README-UPSTREAM.md#remote-access) explains who can connect in each one.
+The modes are `local`, `lan`, `cloudflare`, `tailscale`, and `tailscale-serve`. [Remote access](running.md#remote-access) explains who can connect in each one.
 
 Enable one instance at a time. Every instance uses the same port and data folder, and a second launcher on that folder now refuses to start (it names the pid that holds it) rather than adopting the first one's Tailscale Serve mount.
 
@@ -112,4 +114,4 @@ The launcher has no terminal under systemd, so it uses the mode from `--access` 
 journalctl -u picord@lan -n 30 --no-pager
 ```
 
-Check the prerequisites above: `cloudflared` for a tunnel, a connected Tailscale, or the operator for Tailscale Serve. A port already in use is another common cause. On NixOS, use the module instead of this unit: `services.pi-pocket.enable = true;`.
+Check the prerequisites above: `cloudflared` for a tunnel, a connected Tailscale, or the operator for Tailscale Serve. A port already in use is another common cause.

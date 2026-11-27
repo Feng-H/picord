@@ -16,5 +16,3 @@ result-*
 # What `npm pack` makes.
 /*.tgz
 .dialogue-session/
-packaging/windows/out/
-packaging/macos/out/
