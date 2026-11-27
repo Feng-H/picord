@@ -1,11 +1,23 @@
 // The site's sidebar, by repository path. A page that is in the repository but not here fails the build, so no page
 // is lost; a page here that is not in the repository fails it too. A new page is one row here.
 
+const BASE = "/picord/docs";
+
 export const SIDEBAR = [
+    {
+        // 本 fork 的中文文档:使用手册、运维、走查、差异与演进。
+        label: "中文文档",
+        items: [
+            ["docs/user-guide.md", "图文用户手册"],
+            ["docs/OPERATIONS.md", "运维手册"],
+            ["docs/WALKTHROUGH.md", "全功能走查"],
+            ["docs/diff-with-upstream.md", "与原项目差异"],
+            ["docs/changelog-history.md", "重大演进历史"],
+        ],
+    },
     {
         label: "Getting started",
         items: [
-            ["docs/user-guide.md", "User guide (使用手册)"],
             ["docs/extensions.md", "Overview"],
             ["docs/extensions/first-extension.md", "Your first extension"],
             ["docs/customizing.md", "Changes without code"],
@@ -68,7 +80,7 @@ export const SIDEBAR = [
         ],
     },
     {
-        label: "Pi Pocket's own code",
+        label: "Picord's own code",
         collapsed: true,
         items: [
             ["docs/index.md", "Documentation map"],

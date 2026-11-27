@@ -58,6 +58,27 @@ export function isPagePath(repoPath) {
     );
 }
 
+/**
+ * Pages written in Chinese: they are the root locale (no prefix). Every other page of the repository is the English
+ * locale, addressed under /en/. The language switcher moves between the two trees.
+ */
+export const ZH_PAGES = new Set([
+    "docs/user-guide.md",
+    "docs/OPERATIONS.md",
+    "docs/WALKTHROUGH.md",
+    "docs/diff-with-upstream.md",
+    "docs/changelog-history.md",
+]);
+
+export const localeOf = (repoPath) => (ZH_PAGES.has(repoPath) ? "root" : "en");
+
+/** A page's id in its locale, which is its address under BASE: docs/a/b.md is a/b, an English page is en/a/b. */
+export const idInLocale = (repoPath) => {
+    const id = idOf(repoPath);
+
+    return localeOf(repoPath) === "root" ? id : `en/${id}`;
+};
+
 /** A page's id, which is its address under BASE: docs/a/b.md is a/b, docs/a/index.md is a. */
 export function idOf(repoPath) {
     if (repoPath === "docs/index.md") {
@@ -75,7 +96,7 @@ export function idOf(repoPath) {
         .toLowerCase();
 }
 
-export const urlOf = (repoPath) => `${BASE}/${idOf(repoPath)}/`;
+export const urlOf = (repoPath) => `${BASE}/${idInLocale(repoPath)}/`;
 
 /** Every page there is, as repository paths. */
 export function pages() {
@@ -319,16 +340,47 @@ export function checkLinks() {
     return errors;
 }
 
-export function repoDocsLoader() {
+export function repoDocsLoader(options = {}) {
+    const zh = options.locale === "zh";
+
     const inner = glob({
         base: REPO,
-        pattern: ["docs/**/*.md", "!docs/design/**", ...ROOT_PAGES],
-        generateId: ({ entry }) => idOf(entry),
+        pattern: zh
+            ? ZH_PAGES
+            : ["docs/**/*.md", "!docs/design/**", "!docs/adr/**", "!docs/upstream-features-guide.md", ...ROOT_PAGES],
+        generateId: ({ entry }) => (zh ? `zh/${idOf(entry)}` : idOf(entry)),
     });
 
     return {
-        name: "pi-pocket-docs",
+        name: zh ? "picord-docs-zh" : "picord-docs",
         load: async (context) => {
+            // 链接与标题检查只在英文(根)装载时跑一次;中文副本不重复检查。
+            if (zh) {
+                await inner.load({
+                    ...context,
+                    parseData: async (options2) => {
+                        const repoPath = relative(REPO, resolve(options2.filePath ?? "")).replaceAll(
+                            "\\",
+                            "/",
+                        );
+                        const page = parse(repoPath);
+
+                        return context.parseData({
+                            ...options2,
+                            data: {
+                                title: page.title ?? repoPath,
+                                description: shorten(page.description),
+                                editUrl: `${GITHUB}/edit/main/${repoPath}`,
+                                lang: "zh",
+                                ...options2.data,
+                            },
+                        });
+                    },
+                });
+
+                return;
+            }
+
             const errors = checkLinks();
 
             errors.unshift(
@@ -346,29 +398,27 @@ export function repoDocsLoader() {
 
             await inner.load({
                 ...context,
-                parseData: async (options) => {
-                    const repoPath = relative(REPO, resolve(options.filePath ?? "")).replaceAll(
+                parseData: async (options2) => {
+                    const repoPath = relative(REPO, resolve(options2.filePath ?? "")).replaceAll(
                         "\\",
                         "/",
                     );
                     const page = parse(repoPath);
 
                     return context.parseData({
-                        ...options,
+                        ...options2,
                         data: {
                             title: page.title ?? repoPath,
                             description: shorten(page.description),
                             editUrl: `${GITHUB}/edit/main/${repoPath}`,
-                            ...options.data,
+                            ...options2.data,
                         },
                     });
                 },
             });
         },
     };
-}
-
-const META = /^Since (\d+\.\d+\.\d+) · (Stable|Experimental|Deprecated)\b(.*)$/;
+}const META = /^Since (\d+\.\d+\.\d+) · (Stable|Experimental|Deprecated)\b(.*)$/;
 
 /** The Sätteri plugin for the pages: one instance per file, so it knows where its relative links start. */
 export function repoMarkdown({ fileURL }) {

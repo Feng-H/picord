@@ -1,0 +1,51 @@
+---
+// 中文首页:链接中文文档与英文参考。
+import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
+import { Card, CardGrid, LinkCard } from "@astrojs/starlight/components";
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+---
+
+<StarlightPage
+    frontmatter={{
+        title: "Picord 文档",
+        description:
+            "自托管的个人 Agent 运行时:Discord 风格频道、语音消息、规则引擎、卢曼卡片与历史检索。",
+        template: "splash",
+        hero: {
+            tagline: `自托管的个人 Agent 运行时。频道即思维的工作台:说,它记;静默到点,它总结。Picord ${__POCKET_VERSION__}。`,
+            actions: [
+                {
+                    text: "图文用户手册",
+                    link: `${base}/user-guide/`,
+                    icon: "right-arrow",
+                },
+            ],
+        },
+    }}
+>
+    <CardGrid>
+        <Card title="运维手册" icon="setting">
+            服务管理、登录与账号、频道日常、语音、定时与规则引擎、升级策略与备份。
+        </Card>
+        <Card title="全功能走查" icon="approve-check">
+            每个保留功能如何被核验:HTTP 级脚本 + Agent 工具实测 + 测试套件,12/12 通过。
+        </Card>
+        <Card title="与原项目差异" icon="seti:git">
+            Picord 相对 TannerMidd/pi-pocket 保留了什么、新增了什么、删掉了什么。
+        </Card>
+        <Card title="重大演进历史" icon="stars">
+            从 pi-pocket 分叉到 Picord 的五轮演进:频道、语音、规则引擎、私有隔离、品牌。
+        </Card>
+    </CardGrid>
+    <LinkCard
+        title="英文文档 / English docs"
+        description="Architecture, features, extensions, and the project map, in English"
+        href={`${base}/en/`}
+    />
+    <LinkCard
+        title="运维手册"
+        description="服务、频道、语音、定时与备份"
+        href={`${base}/operations/`}
+    />
+</StarlightPage>

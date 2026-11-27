@@ -4,21 +4,23 @@ import { join } from "node:path";
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
 import { satteri } from "@astrojs/markdown-satteri";
-import { idOf, pages, REPO, repoMarkdown, VERSION } from "./src/repo-docs.mjs";
+import { idInLocale, idOf, pages, REPO, repoMarkdown, VERSION } from "./src/repo-docs.mjs";
 import { SIDEBAR } from "./src/sidebar.mjs";
 
-const listed = new Set(SIDEBAR.flatMap((group) => group.items.map(([path]) => path)));
+const listed = new Set(pages().map((path) => idOf(path)));
 const problems = [];
 
 for (const path of pages()) {
-    if (!listed.has(path)) {
+    if (!listed.has(idOf(path))) {
         problems.push(`${path} is a page, but not in the sidebar (docs-site/src/sidebar.mjs)`);
     }
 }
 
-for (const path of listed) {
-    if (!existsSync(join(REPO, path))) {
-        problems.push(`${path} is in the sidebar, but not in the repository`);
+for (const group of SIDEBAR) {
+    for (const item of group.items) {
+        if (typeof item.slug === "string" && !listed.has(item.slug)) {
+            problems.push(`${item.slug} is in the sidebar, but not in the repository`);
+        }
     }
 }
 
@@ -26,10 +28,15 @@ if (problems.length > 0) {
     throw new Error(`The sidebar and the pages differ:\n${problems.join("\n")}`);
 }
 
+// 侧栏是单一数组:Starlight 会按当前语言解析 slug——中文页在中文站,英文参考页带 /en/ 前缀。
 const sidebar = SIDEBAR.map(({ label, collapsed, items }) => ({
     label,
     collapsed: collapsed ?? false,
-    items: items.map(([path, text]) => ({ slug: idOf(path), label: text })),
+    items: items.map((item) =>
+        Array.isArray(item)
+            ? { slug: idOf(item[0]), label: item[1] }
+            : item,
+    ),
 }));
 
 export default defineConfig({
@@ -61,6 +68,16 @@ export default defineConfig({
         },
         starlight({
             title: "Picord docs",
+            locales: {
+                root: { label: "English", lang: "en" },
+                zh: { label: "简体中文", lang: "zh" },
+            },
+            defaultLocale: "root",
+            locales: {
+                root: { label: "English", lang: "en" },
+                zh: { label: "简体中文", lang: "zh" },
+            },
+            defaultLocale: "root",
             description:
                 "Extend Picord: give Pi tools, rules, and checks, and add pages, buttons, and commands to the app.",
             logo: { src: "./public/icon.svg", alt: "" },

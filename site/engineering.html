@@ -1,12 +1,12 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
     <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-        <title>Engineering · Pi Pocket</title>
+        <title>工程与架构 · Picord</title>
         <meta
             name="description"
-            content="How Pi Pocket is built: one Node.js process, one SQLite file through Pi Durable, and a web app with no build step. Architecture, request path, durability rules, state, extensions, and security."
+            content="Picord 是如何构建的:一个 Node.js 进程、一个 SQLite 文件、无构建步骤的 Web 前端。Pi Durable 驱动 agent 并在任何人看到之前提交每一步。架构、请求路径、持久化规则、状态与扩展。"
         />
         <meta name="theme-color" content="#111219" media="(prefers-color-scheme: dark)" />
         <meta name="theme-color" content="#f7f8fb" media="(prefers-color-scheme: light)" />
@@ -16,38 +16,38 @@
         <link rel="stylesheet" href="style.css" />
 
         <meta property="og:type" content="article" />
-        <meta property="og:site_name" content="Pi Pocket" />
-        <meta property="og:title" content="How Pi Pocket is built" />
+        <meta property="og:site_name" content="Picord" />
+        <meta property="og:title" content="Picord 是如何构建的" />
         <meta
             property="og:description"
-            content="Architecture, request path, durability rules, state, and extensions of a self-hosted web app for the Pi coding agent."
+            content="面向 Pi coding agent 的自托管 Web 应用:架构、请求路径、持久化规则、状态与扩展。"
         />
         <meta property="og:url" content="https://feng-h.github.io/picord/engineering.html" />
         <meta property="og:image" content="https://feng-h.github.io/picord/og.png" />
         <meta name="twitter:card" content="summary_large_image" />
     </head>
     <body>
-        <a class="skip" href="#main">Skip to content</a>
+        <a class="skip" href="#main">跳到正文</a>
 
         <header class="nav">
             <div class="wrap">
-                <a class="logo" href="./" aria-label="Pi Pocket home"
-                    ><img src="icon.svg" alt="" width="26" height="26" />Pi Pocket</a
+                <a class="logo" href="./" aria-label="Picord 首页"
+                    ><img src="icon.svg" alt="" width="26" height="26" />Picord</a
                 >
-                <nav class="nav-links" aria-label="Sections">
-                    <a href="#architecture">Architecture</a>
-                    <a href="#message">A message</a>
-                    <a href="#durability">Durability</a>
-                    <a href="#state">State</a>
-                    <a href="#extensions">Extensions</a>
-                    <a href="#assistant">PiP</a>
-                    <a href="#practices">Practices</a>
+                <nav class="nav-links" aria-label="章节">
+                    <a href="#architecture">架构</a>
+                    <a href="#message">一条消息</a>
+                    <a href="#durability">持久化</a>
+                    <a href="#state">状态</a>
+                    <a href="#extensions">扩展</a>
+                    <a href="#assistant">跨会话</a>
+                    <a href="#practices">实践</a>
                     <span class="nav-sep" aria-hidden="true"></span>
                     <a class="nav-guide" href="durable.html"
-                        >Durable<span class="nav-long"> guide</span></a
+                        >Pi Durable<span class="nav-long"> 指南</span></a
                     >
                     <a class="nav-guide" href="architecture.html"
-                        >Architecture<span class="nav-long"> guide</span></a
+                        >架构<span class="nav-long"> 指南</span></a
                     >
                 </nav>
                 <a class="btn btn-sm" href="https://github.com/Feng-H/picord">
@@ -64,28 +64,26 @@
         <main id="main">
             <section class="page-head">
                 <div class="wrap">
-                    <span class="kicker">Engineering</span>
-                    <h1>How Pi Pocket <span class="grad">is built.</span></h1>
+                    <span class="kicker">工程与架构</span>
+                    <h1>Picord <span class="grad">是如何构建的。</span></h1>
                     <p class="lead">
-                        One Node.js process, one SQLite file, and a web app with no build step. Pi
-                        Durable runs the agent and commits every step before anyone sees it. Pi
-                        Pocket adds the people, the phone, and the ways in. This page covers the
-                        parts, how a message moves through them, and the rules that keep them
-                        consistent.
+                        一个 Node.js 进程、一个 SQLite 文件、无构建步骤的 Web 前端。Pi
+                        Durable 驱动 agent,并在任何人看到之前提交每一步。Picord
+                        在其上加了频道、账号与人,以及手机。本页讲清:组成部分、一条消息如何穿行其间、以及保持一致的规则。
                     </p>
                     <div class="facts">
-                        <span>TypeScript, no build</span>
-                        <span>Preact and htm</span>
-                        <span>SQLite through Pi Durable</span>
+                        <span>TypeScript,无构建</span>
+                        <span>Preact + htm</span>
+                        <span>经 Pi Durable 的 SQLite</span>
                         <span>Node.js 22.19+</span>
                     </div>
                     <div class="cta">
                         <a
                             class="btn btn-primary"
                             href="https://github.com/Feng-H/picord/blob/main/docs/map.md"
-                            >Code map</a
+                            >代码地图</a
                         >
-                        <a class="btn" href="https://github.com/Feng-H/picord">Source on GitHub</a>
+                        <a class="btn" href="https://github.com/Feng-H/picord">GitHub 源码</a>
                     </div>
                 </div>
             </section>
@@ -94,60 +92,59 @@
             <section class="section alt" id="architecture">
                 <div class="wrap">
                     <div class="section-head">
-                        <span class="kicker">Architecture</span>
-                        <h2>The parts.</h2>
+                        <span class="kicker">架构</span>
+                        <h2>组成部分。</h2>
                         <p>
-                            Browsers talk to one server over a JSON API and an event stream. The
-                            server keeps its state in Pi Durable's storage and rebuilds the rest
-                            from it when it starts. Most of what a browser sees is stored. A few
-                            live things are kept only in memory: who is here and typing, calls
-                            waiting for approval, and the built-in browser's pages.
+                            浏览器通过 JSON API 和事件流与唯一的服务进程对话。服务把状态存在 Pi
+                            Durable 的存储里,启动时从它重建其余一切。浏览器看到的大多数内容都已落库;少数活跃状态只存内存:谁在线、谁在输入、等待批准的调用、内置浏览器的页面。
                         </p>
                     </div>
 
                     <figure class="arch">
                         <div class="arch-stack">
                             <div class="layer">
-                                <div class="layer-head"><b>Browsers</b><code>web/</code></div>
+                                <div class="layer-head"><b>浏览器</b><code>web/</code></div>
                                 <div class="parts">
                                     <span>Preact + htm</span><span>service worker</span
-                                    ><span>push</span><span>share target</span
-                                    ><span>home-screen app</span>
+                                    ><span>推送通知</span><span>分享目标</span
+                                    ><span>主屏幕应用</span>
                                 </div>
                             </div>
-                            <div class="wire">JSON API · server-sent events · long polling</div>
+                            <div class="wire">JSON API · 服务器推送事件 · 长轮询</div>
                             <div class="layer">
-                                <div class="layer-head"><b>HTTP server</b><code>http.ts</code></div>
+                                <div class="layer-head"><b>HTTP 服务</b><code>http.ts</code></div>
                                 <div class="parts">
-                                    <span>/api routes</span><span>event stream</span
-                                    ><span>uploads</span><span>sandboxed artifacts</span
-                                    ><span>browser frames</span><span>invites</span
-                                    ><span>webhooks</span>
+                                    <span>/api 路由</span><span>事件流</span
+                                    ><span>上传</span><span>沙箱 artifacts</span
+                                    ><span>浏览器画面</span><span>邀请</span
+                                    ><span>webhook</span>
                                 </div>
                             </div>
-                            <div class="wire">calls</div>
+                            <div class="wire">调用</div>
                             <div class="layer core">
                                 <div class="layer-head"><b>PocketApp</b><code>app.ts</code></div>
                                 <div class="parts">
-                                    <span>rooms</span><span>commands</span><span>collab</span
-                                    ><span>attribution</span><span>alerts</span><span>spend</span
-                                    ><span>schedules</span><span>goals</span><span>shell</span
-                                    ><span>memory</span><span>pip</span><span>watches</span
-                                    ><span>hooks</span><span>providers</span>
+                                    <span>房间</span><span>命令</span><span>协作</span
+                                    ><span>署名</span><span>提醒</span><span>花费</span
+                                    ><span>定时</span><span>规则引擎</span><span>频道</span
+                                    ><span>目标</span><span>shell</span><span>记忆</span
+                                    ><span>PiP</span><span>监视</span><span>hook</span
+                                    ><span>供应商</span>
                                 </div>
                             </div>
-                            <div class="wire">commits · commit listener</div>
+                            <div class="wire">提交 · 提交监听</div>
                             <div class="layer">
                                 <div class="layer-head">
                                     <b>Pi Durable harness</b><code>@earendil-works/pi-durable</code>
                                 </div>
                                 <div class="parts">
-                                    <span>conversations</span><span>tasks</span
-                                    ><span>documents</span><span>extensions</span
-                                    ><span>task graph</span>
+                                    <span>会话</span><span>任务</span
+                                    ><span>文档</span><span>扩展</span
+                                    ><span>任务图</span>
                                 </div>
                             </div>
-                            <div class="wire">one file</div>
+
+                            <div class="wire">单个文件</div>
                             <div class="layer store">
                                 <div class="layer-head">
                                     <b>SQLite</b><code>~/.picord/pocket.sqlite</code>
@@ -160,43 +157,37 @@
                                     <b>Launcher</b><code>src/launcher/</code>
                                 </div>
                                 <p>
-                                    Runs the server as a child and restarts it when the app asks
-                                    (exit code 75) or after a crash. Keeps the tunnel up: this
-                                    device, LAN, Cloudflare, Tailscale, or Tailscale Serve.
+                                    以子进程运行服务,应用请求(退出码 75)或崩溃后自动重启;维持隧道:本机、局域网、Cloudflare、Tailscale。
                                 </p>
                             </div>
                             <div class="layer">
                                 <div class="layer-head">
-                                    <b>Extensions</b><code>src/server/extensions/</code>
+                                    <b>扩展</b><code>src/server/extensions/</code>
                                 </div>
                                 <p>
-                                    Tools, hooks, prompt sections, and tasks, installed into the
-                                    harness and reinstalled when edited. The owner's drop-ins load
-                                    after them.
+                                    工具、钩子、提示词段落与任务,装进 harness,编辑即重装。所有者的
+                                    drop-in 在其后加载。
                                 </p>
                             </div>
                             <div class="layer">
                                 <div class="layer-head"><b>Chromium</b><code>browser.ts</code></div>
                                 <p>
-                                    One headless browser driven over the DevTools protocol through a
-                                    pipe, with a page per session that Pi's browser tool and the
-                                    Browser panel share. Started on first use.
+                                    通过管道以 DevTools 协议驱动的一个无头浏览器,每个会话一个页面,供
+                                    Pi 的 browser 工具与浏览器面板共用。首次使用时启动。
                                 </p>
                             </div>
                             <div class="layer">
                                 <div class="layer-head"><b>Pi</b><code>~/.pi/agent/</code></div>
                                 <p>
-                                    Sign-ins, settings, skills, prompt templates, and project trust,
-                                    shared with the Pi command line, and Lancet Guard when it is
-                                    installed. Pi's own sessions are only read, to continue one.
+                                    供应商登录、设置、技能、提示词模板与项目信任,与 Pi
+                                    命令行共用;Lancet Guard 装好即生效。Pi 自己的会话只读,用于继续对话。
                                 </p>
                             </div>
                             <div class="layer">
                                 <div class="layer-head"><b>GitHub</b><code>github.ts</code></div>
                                 <p>
-                                    Pull request and repository watches, webhooks' checks of who can
-                                    write to a repository, and PiP's clones use the
-                                    <code>gh</code> command signed in on the server.
+                                    PR 与仓库监视、webhook 的仓库写权限校验、PiP
+                                    的克隆,都走服务器上已登录的 <code>gh</code> 命令。
                                 </p>
                             </div>
                         </div>
@@ -205,54 +196,45 @@
                     <div class="grid map">
                         <article class="card">
                             <code>room.ts</code>
-                            <h3>Rooms</h3>
+                            <h3>房间</h3>
                             <p>
-                                A room per conversation someone is watching. It batches changes for
-                                90 ms, turns entries into compact JSON, and sends each tab only the
-                                entries and fields it does not have yet.
+                                每个被观看的会话一个房间。90 毫秒批量聚合变更,把条目压成紧凑
+                                JSON,只给每个标签页发送它还缺的条目与字段。
                             </p>
                         </article>
                         <article class="card">
                             <code>commands.ts</code>
-                            <h3>Commands</h3>
+                            <h3>命令</h3>
                             <p>
-                                Everything people ask of Pi checks role, invite scope, and take
-                                turns first. Changes others should know about become activity lines
-                                in the session's chat.
+                                人向 Pi 提出的一切,都先校验角色、邀请范围与轮流发言。他人应知晓的变更,会成为会话聊天里的活动行。
                             </p>
                         </article>
                         <article class="card">
                             <code>app.ts</code>
-                            <h3>One commit listener</h3>
+                            <h3>唯一的提交监听</h3>
                             <p>
-                                The one place that hears every commit: it records authors, tracks
-                                busy sessions, counts spend, and updates rooms. Features react to
-                                commits instead of polling.
+                                唯一能听到每一次提交的地方:记录作者、标记忙碌会话、统计花费、更新房间。功能对提交作出反应,而不是轮询。
                             </p>
                         </article>
                         <article class="card">
                             <code>store.js</code>
-                            <h3>Event stream</h3>
+                            <h3>事件流</h3>
                             <p>
-                                Server-sent events by default. When a tunnel holds the stream back,
-                                the app switches to long polling and remembers that for a day.
+                                默认服务器推送事件。当隧道拖慢了流,应用切到长轮询并记住一天。
                             </p>
                         </article>
                         <article class="card">
                             <code>reload.ts</code>
-                            <h3>Live reload</h3>
+                            <h3>热重载</h3>
                             <p>
-                                A changed extension is imported again and installed under the same
-                                name. A tool call already running finishes on the old code; a module
-                                that fails to load keeps its last good version.
+                                被修改的扩展重新导入并以同名安装。运行中的工具调用在旧代码上收尾;加载失败的模块保留上一个可用版本。
                             </p>
                         </article>
                         <article class="card">
                             <code>projection.ts</code>
-                            <h3>Small updates</h3>
+                            <h3>小更新</h3>
                             <p>
-                                Long tool output and file contents are clipped in the live view. A
-                                tab asks for the full entry when someone expands it.
+                                长工具输出与文件内容在实时视图里裁剪展示。有人展开时,标签页再请求完整条目。
                             </p>
                         </article>
                     </div>
@@ -263,66 +245,58 @@
             <section class="section" id="message">
                 <div class="wrap">
                     <div class="section-head">
-                        <span class="kicker">Request path</span>
-                        <h2>A message, start to finish.</h2>
+                        <span class="kicker">请求路径</span>
+                        <h2>一条消息,从头到尾。</h2>
                         <p>
-                            What happens between tapping send on a phone and every open tab showing
-                            Pi's answer.
+                            从手机上点下发送,到每个打开的标签页都看到 Pi 的回答,中间发生了什么。
                         </p>
                     </div>
                     <ol class="trace">
                         <li>
                             <code>web/composer.js</code>
-                            <h3>Sent with an id</h3>
+                            <h3>带着 id 发出</h3>
                             <p>
-                                The tab posts the message to <code>/api/c/:id/submit</code> with an
-                                id of its own, so sending again after a network error does not send
-                                twice.
+                                标签页把消息 POST 到 <code>/api/c/:id/submit</code>,并带上自生成的
+                                id——网络错误后重发也不会发两次。
                             </p>
                         </li>
                         <li>
                             <code>commands.ts</code>
-                            <h3>Checked, then queued</h3>
+                            <h3>先校验,再入队</h3>
                             <p>
-                                Role, invite scope, take turns, and spend limits are checked, and a
-                                prompt template expands. The message goes into the conversation's
-                                inbox with the request id <code>u:&lt;person&gt;:&lt;id&gt;</code>,
-                                which also says who wrote it. While Pi works, it joins the run or
-                                waits as a follow-up.
+                                角色、邀请范围、轮流发言与花费限额逐一校验,提示词模板展开。消息带着
+                                <code>u:&lt;人&gt;:&lt;id&gt;</code>
+                                的请求 id 进入会话收件箱——它同时说明是谁写的。Pi
+                                工作时,消息加入当前运行或作为后续排队。
                             </p>
                         </li>
                         <li>
                             <code>pi-durable</code>
-                            <h3>Run as durable tasks</h3>
+                            <h3>作为持久任务运行</h3>
                             <p>
-                                The model request and each tool call are tasks that commit as they
-                                go. Plan mode, Lancet Guard, and goals hook into those tasks.
+                                模型请求与每个工具调用都是边走边提交的任务。计划模式、Lancet
+                                Guard 与目标检查钩进这些任务。
                             </p>
                         </li>
                         <li>
                             <code>app.ts</code>
-                            <h3>Heard once</h3>
+                            <h3>只被听到一次</h3>
                             <p>
-                                The commit listener sees each commit, records the author, marks the
-                                session busy, counts spend, and tells the rooms watching that
-                                conversation.
+                                提交监听器看到每次提交:记录作者、标记会话忙碌、统计花费,并通知正在观看该会话的房间。
                             </p>
                         </li>
                         <li>
                             <code>room.ts</code>
-                            <h3>Sent as changes</h3>
+                            <h3>以变更发出</h3>
                             <p>
-                                The room waits up to 90 ms to batch changes, then sends each tab
-                                what it is missing over its event stream.
+                                房间最多等 90 毫秒聚合变更,然后经事件流把每个标签页缺的部分发过去。
                             </p>
                         </li>
                         <li>
                             <code>web/store.js</code>
-                            <h3>Rendered</h3>
+                            <h3>渲染</h3>
                             <p>
-                                The store applies the update and Preact renders it. A tab that
-                                reconnects gets the whole view again, so every device shows the same
-                                thing.
+                                store 应用更新,Preact 渲染。重连的标签页会重新拿到完整视图,因此每台设备看到一致的内容。
                             </p>
                         </li>
                     </ol>
@@ -333,69 +307,59 @@
             <section class="section alt" id="durability">
                 <div class="wrap">
                     <div class="section-head">
-                        <span class="kicker">Durability</span>
-                        <h2>Rules that survive a crash.</h2>
+                        <span class="kicker">持久化</span>
+                        <h2>崩溃之后依然成立的规则。</h2>
                         <p>
-                            Pi Durable provides tasks, checkpoints, and atomic commits. Pi Pocket
-                            uses them so that a restart at any moment changes nothing anyone can
-                            see.
+                            Pi Durable 提供任务、检查点与原子提交。Picord
+                            用它们保证:任何时刻重启,都不改变任何人能看到的东西。
                         </p>
                     </div>
                     <div class="grid map">
                         <article class="card">
-                            <code>commit, then show</code>
-                            <h3>Shown once stored</h3>
+                            <code>先提交,再显示</code>
+                            <h3>存下来才可见</h3>
                             <p>
-                                Browsers render committed state only. Pi Pocket's documents change
-                                in the same commits as the transcript, so the two never disagree
-                                after a crash.
+                                浏览器只渲染已提交的状态。Picord
+                                的文档与聊天记录在同一批提交里变更,崩溃后两者不会互相矛盾。
                             </p>
                         </article>
                         <article class="card">
-                            <code>request ids</code>
-                            <h3>Sent once</h3>
+                            <code>request id</code>
+                            <h3>只发一次</h3>
                             <p>
-                                Every message to Pi has a request id, which also says whose work it
-                                is. A retried send, a resend, a <code>!</code> command, a scheduled
-                                message, or a watch's message sent again after a restart finds the
-                                one already there.
+                                每条发给 Pi 的消息都带请求 id,同时说明是谁的工作。重试发送、
+                                <code>!</code> 命令、定时消息、监视消息在重启后重发,都会找到已存在的那一条。
                             </p>
                         </article>
                         <article class="card">
-                            <code>memos</code>
-                            <h3>Asked once</h3>
+                            <code>memo</code>
+                            <h3>只问一次</h3>
                             <p>
-                                A hook keeps its result in its task's memo: an approval's answer, a
-                                goal's check. After a restart the hook runs again and reads the memo
-                                instead of asking or checking again.
+                                钩子把结果存进任务的 memo:一次批准的答复、一次目标的检查。重启后钩子重新运行,读
+                                memo 而不再询问或检查。
                             </p>
                         </article>
                         <article class="card">
                             <code>replay: "safe"</code>
-                            <h3>Rerun only when harmless</h3>
+                            <h3>只在无害时重跑</h3>
                             <p>
-                                A tool call cut off by a restart runs again only if running it twice
-                                is harmless, as for artifacts, schedules, memory, and PiP's tools.
-                                Otherwise the model is told it was interrupted and checks what
-                                happened. A <code>!</code> command someone ran is never run twice.
+                                被重启切断的工具调用,只在重跑无害时再次运行——如 artifacts、定时、记忆与
+                                PiP 的工具。否则模型会被告知"已被中断",并自行检查实际发生了什么。人运行的
+                                <code>!</code> 命令绝不运行两次。
                             </p>
                         </article>
                         <article class="card">
-                            <code>durable tasks</code>
-                            <h3>Time that survives</h3>
+                            <code>持久任务</code>
+                            <h3>跨过重启的时间</h3>
                             <p>
-                                A scheduled message is a task that sleeps in the harness. A restart
-                                while it sleeps keeps it sleeping; one after its time sends it at
-                                once, and only once.
+                                定时消息是 harness 里休眠的任务。休眠中重启,继续休眠;超过时限后重启,立即发送且只发一次。
                             </p>
                         </article>
                         <article class="card">
-                            <code>fork policies</code>
-                            <h3>Forks are data</h3>
+                            <code>fork 策略</code>
+                            <h3>分叉即数据</h3>
                             <p>
-                                Each document says whether a fork copies it or starts empty. A
-                                fork's setup trims what it copied, such as pins and authors, to the
-                                fork point in the same commit.
+                                每个文档声明分叉时是复制还是留空。分叉的初始化在同一批提交里修剪复制来的内容,比如置顶与作者,裁剪到分叉点。
                             </p>
                         </article>
                     </div>
@@ -406,197 +370,187 @@
             <section class="section" id="state">
                 <div class="wrap">
                     <div class="section-head">
-                        <span class="kicker">State</span>
-                        <h2>Where everything lives.</h2>
+                        <span class="kicker">状态</span>
+                        <h2>万物归位。</h2>
                         <p>
-                            Pi Pocket's documents sit beside Pi Durable's own (the transcript, the
-                            agent's settings, the inbox, the live run, usage) in
-                            <code>pocket.sqlite</code>. Their kinds are stored data, so they are
-                            never renamed.
+                            Picord 的文档与 Pi Durable 自身的(聊天记录、agent 设置、收件箱、运行视图、用量)并存于
+                            <code>pocket.sqlite</code>。它们的类型就是存储的数据,因此永不变名。
                         </p>
                     </div>
                     <div class="table-wrap">
                         <table class="docs">
                             <thead>
                                 <tr>
-                                    <th>Document</th>
-                                    <th>Holds</th>
-                                    <th>A fork</th>
+                                    <th>文档</th>
+                                    <th>存放</th>
+                                    <th>分叉时</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <tr>
                                     <td><code>pocket.sessions</code></td>
                                     <td>
-                                        The session list: title, folder, who started it, where it
-                                        was forked from, spend limit, worktree. One for the server.
+                                        会话列表:标题、文件夹、谁启动、从哪分叉、花费限额、worktree。全服一份。
                                     </td>
-                                    <td>adds a session</td>
+                                    <td>新增会话</td>
                                 </tr>
                                 <tr>
                                     <td><code>pocket.chat</code></td>
-                                    <td>The side chat and activity lines</td>
-                                    <td>starts its own</td>
+                                    <td>旁路聊天与活动行</td>
+                                    <td>自成一份</td>
                                 </tr>
                                 <tr>
                                     <td><code>pocket.authors</code></td>
                                     <td>
-                                        Who wrote each message to Pi, and whose work the ones sent
-                                        for people are
+                                        每条消息的作者,以及代发消息归属谁的工作
                                     </td>
-                                    <td>copies, to the fork point</td>
+                                    <td>复制到分叉点</td>
                                 </tr>
                                 <tr>
                                     <td><code>pocket.pins</code></td>
-                                    <td>Pinned messages</td>
-                                    <td>copies, to the fork point</td>
+                                    <td>置顶消息</td>
+                                    <td>复制到分叉点</td>
                                 </tr>
                                 <tr>
                                     <td><code>pocket.reactions</code></td>
-                                    <td>Emoji reactions</td>
-                                    <td>copies</td>
+                                    <td>表情回应</td>
+                                    <td>复制</td>
                                 </tr>
                                 <tr>
                                     <td><code>pocket.notes</code></td>
-                                    <td>The shared notes page</td>
-                                    <td>copies</td>
+                                    <td>共享笔记页</td>
+                                    <td>复制</td>
                                 </tr>
                                 <tr>
                                     <td><code>pocket.plan</code></td>
-                                    <td>Plan mode</td>
-                                    <td>copies</td>
+                                    <td>计划模式</td>
+                                    <td>复制</td>
                                 </tr>
                                 <tr>
                                     <td><code>pocket.decisions</code></td>
-                                    <td>Who allowed or denied each guarded call</td>
-                                    <td>copies</td>
+                                    <td>谁批准或拒绝了每个受守卫的调用</td>
+                                    <td>复制</td>
                                 </tr>
                                 <tr>
                                     <td><code>pocket.artifacts</code></td>
                                     <td>
-                                        Artifacts, with each version's body in
+                                        Artifacts,各版本正文存于
                                         <code>pocket.artifact-body</code>
                                     </td>
-                                    <td>copies</td>
+                                    <td>复制</td>
                                 </tr>
                                 <tr>
                                     <td><code>pocket.codemode-store</code></td>
-                                    <td>Values scripts keep between runs</td>
-                                    <td>copies</td>
+                                    <td>脚本跨运行保留的值</td>
+                                    <td>复制</td>
                                 </tr>
                                 <tr>
                                     <td><code>pocket.browser</code></td>
                                     <td>
-                                        The page the browser last showed, and its size, to open it
-                                        again after a restart
+                                        浏览器最后显示的页面与其尺寸,重启后原样恢复
                                     </td>
-                                    <td>copies</td>
+                                    <td>复制</td>
                                 </tr>
                                 <tr>
                                     <td><code>pocket.turns</code></td>
-                                    <td>Take turns: who drives, who asked</td>
-                                    <td>starts empty</td>
+                                    <td>轮流发言:谁在驱动、谁请求</td>
+                                    <td>留空</td>
                                 </tr>
                                 <tr>
                                     <td><code>pocket.subagents</code></td>
-                                    <td>Named subagents and the tasks reporting their answers</td>
-                                    <td>starts empty</td>
+                                    <td>命名子代理与回报其回答的任务</td>
+                                    <td>留空</td>
                                 </tr>
                                 <tr>
                                     <td><code>pocket.schedules</code></td>
-                                    <td>Scheduled messages</td>
-                                    <td>starts empty</td>
+                                    <td>定时消息</td>
+                                    <td>留空</td>
                                 </tr>
                                 <tr>
                                     <td><code>pocket.goal</code></td>
-                                    <td>"Done when": the check and its tries</td>
-                                    <td>starts empty</td>
+                                    <td>"完成条件":检查与重试</td>
+                                    <td>留空</td>
                                 </tr>
                                 <tr>
                                     <td><code>pocket.shell-requests</code></td>
                                     <td>
-                                        The <code>!</code> commands people started, by request id,
-                                        so one sent again runs once
+                                        人们启动的 <code>!</code> 命令,按请求 id 记录,重发只运行一次
                                     </td>
-                                    <td>starts empty</td>
+                                    <td>留空</td>
                                 </tr>
                                 <tr>
                                     <td><code>pocket.pr-watch</code></td>
                                     <td>
-                                        A session's watch of its pull request: how it stands, and
-                                        what Pi was told
+                                        会话对其 PR 的监视:进展如何,以及 Pi 被告知了什么
                                     </td>
-                                    <td>starts empty</td>
+                                    <td>留空</td>
                                 </tr>
                                 <tr>
                                     <td><code>pocket.pip-follows</code></td>
-                                    <td>PiP's follows, by the tool call that made each</td>
-                                    <td>starts empty</td>
+                                    <td>PiP 的跟随,按发起的工具调用记录</td>
+                                    <td>留空</td>
                                 </tr>
                                 <tr>
                                     <td><code>pocket.pip-asked</code></td>
-                                    <td>Which provider pays, when PiP asked its person</td>
-                                    <td>starts empty</td>
+                                    <td>PiP 询问其所有者时由哪个供应商付费</td>
+                                    <td>留空</td>
                                 </tr>
                                 <tr>
                                     <td><code>pocket.pip-compaction</code></td>
-                                    <td>PiP's own summaries, so each one's cost counts once</td>
-                                    <td>starts empty</td>
+                                    <td>PiP 自己的摘要,使每次摘要的成本只计一次</td>
+                                    <td>留空</td>
                                 </tr>
                                 <tr>
                                     <td><code>pocket.memory</code></td>
                                     <td>
-                                        Lessons Pi keeps across sessions, waiting or approved. One
-                                        for the server.
+                                        Pi 跨会话保留的经验:待批准或已批准。全服一份。
                                     </td>
                                     <td>—</td>
                                 </tr>
                                 <tr>
                                     <td><code>pocket.hooks</code></td>
-                                    <td>Webhooks. One for the server.</td>
+                                    <td>Webhook。全服一份。</td>
                                     <td>—</td>
                                 </tr>
                                 <tr>
                                     <td><code>pocket.repo-watches</code></td>
-                                    <td>Repository watches. One for the server.</td>
+                                    <td>仓库监视。全服一份。</td>
                                     <td>—</td>
                                 </tr>
                                 <tr>
                                     <td><code>pocket.spend</code></td>
                                     <td>
-                                        Spend per person, and what was counted. One for the server.
+                                        每人花费与已计入的部分。全服一份。
                                     </td>
                                     <td>—</td>
                                 </tr>
                             </tbody>
                         </table>
                     </div>
-                    <h3 class="map-head">Outside the database</h3>
+                    <h3 class="map-head">数据库之外</h3>
                     <div class="tags">
                         <span class="tag"
-                            ><b>config.json</b> people, roles, hashed tokens, settings</span
+                            ><b>config.json</b> 用户、角色、哈希令牌、设置</span
                         >
-                        <span class="tag"><b>push.json</b> VAPID keys, push subscriptions</span>
-                        <span class="tag"><b>uploads/</b> files sent to Pi</span>
-                        <span class="tag"><b>worktrees/</b> sessions' git worktrees</span>
-                        <span class="tag"><b>extensions/</b> the owner's drop-ins</span>
-                        <span class="tag"><b>browser/</b> the built-in browser's profile</span>
-                        <span class="tag"><b>repos/</b> clones PiP makes of repositories</span>
-                        <span class="tag"><b>launcher.json</b> the launcher's access choice</span>
+                        <span class="tag"><b>push.json</b> VAPID 密钥、推送订阅</span>
+                        <span class="tag"><b>uploads/</b> 发给 Pi 的文件</span>
+                        <span class="tag"><b>worktrees/</b> 会话的 git worktree</span>
+                        <span class="tag"><b>extensions/</b> 所有者的 drop-in</span>
+                        <span class="tag"><b>browser/</b> 内置浏览器的配置档案</span>
+                        <span class="tag"><b>repos/</b> PiP 克隆的仓库</span>
+                        <span class="tag"><b>launcher.json</b> launcher 的接入选择</span>
                         <span class="tag"
-                            ><b>serve-mount.json</b> the Serve mount the launcher made</span
+                            ><b>serve-mount.json</b> launcher 建立的 Serve 挂载</span
                         >
-                        <span class="tag"><b>launcher.lock</b> one launcher per data folder</span>
+                        <span class="tag"><b>launcher.lock</b> 每个数据目录一个 launcher</span>
                         <span class="tag"
-                            ><b>bin/</b> <code>cloudflared</code>, when the launcher downloads
-                            it</span
+                            ><b>bin/</b> launcher 下载的 <code>cloudflared</code>(如有)</span
                         >
-                        <span class="tag"><b>harness.lock</b> one server per data folder</span>
+                        <span class="tag"><b>harness.lock</b> 每个数据目录一个服务</span>
                     </div>
                     <p class="note">
-                        All of it is in <code>~/.picord/</code>, or wherever
-                        <code>PI_POCKET_DIR</code> points. The config files are written atomically
-                        with mode 0600.
+                        全部位于 <code>~/.picord/</code>(或 <code>PI_POCKET_DIR</code>
+                        指向处)。配置文件以 0600 权限原子写入。
                     </p>
                 </div>
             </section>
@@ -605,102 +559,119 @@
             <section class="section alt" id="extensions">
                 <div class="wrap">
                     <div class="section-head">
-                        <span class="kicker">Extensions</span>
-                        <h2>Features are extensions.</h2>
+                        <span class="kicker">扩展</span>
+                        <h2>功能即扩展。</h2>
                         <p>
-                            Much of what Pi Pocket adds around the agent is Pi Durable extensions:
-                            tools, hooks, prompt sections, and task definitions, installed in this
-                            order. Editing one reinstalls it in the running server.
+                            Picord 加在 agent 周围的许多能力,都是 Pi Durable
+                            扩展:工具、钩子、提示词段落与任务定义,按此顺序安装。编辑一个,运行中的服务即时重装。
                         </p>
                     </div>
                     <ol class="ext">
                         <li>
-                            <code>prompt.ts</code><span class="kinds">section</span>
+                            <code>prompt.ts</code><span class="kinds">段落</span>
                             <p>
-                                The system prompt: guidelines for a phone-sized screen, the
-                                project's AGENTS.md files, Pi's skills, and the working directory.
-                                Always on.
+                                系统提示词:面向手机屏幕的准则、项目的 AGENTS.md 文件、Pi
+                                的技能、工作目录。以及本 fork
+                                的规矩:问早期细节先调 search_history,跨频道交接用
+                                channel_post。始终开启。
                             </p>
                         </li>
                         <li>
-                            <code>artifacts.ts</code><span class="kinds">tool</span>
-                            <p>Versioned HTML, Markdown, and SVG artifacts, opened in a sandbox.</p>
-                        </li>
-                        <li>
-                            <code>browser.ts</code><span class="kinds">tool · section</span>
+                            <code>channels.ts</code><span class="kinds">工具</span>
                             <p>
-                                A real browser Pi shares with the people in a session: snapshots
-                                with element refs, clicks, typing, screenshots, the console. In plan
-                                mode it may only look.
+                                本 fork 新增:channel_post 让 Pi
+                                把消息推进另一个频道,对方频道的 Pi 在其频道内读取并回答。
                             </p>
                         </li>
                         <li>
-                            <code>subagents.ts</code><span class="kinds">tool · tasks</span>
+                            <code>history.ts</code><span class="kinds">工具</span>
                             <p>
-                                Background subagents. An anchor task owns each one; a reporter task
-                                carries each answer back to the parent.
+                                本 fork 新增:search_history
+                                检索原始条目(本会话/全部会话/指定会话),治长对话压缩摘要的"跨天失忆"。
                             </p>
                         </li>
                         <li>
-                            <code>schedules.ts</code><span class="kinds">tool · task</span>
+                            <code>session-cleanup.ts</code>
+                            <span class="kinds">路由 · 浏览器面板</span>
                             <p>
-                                Scheduled messages, and Pi's tool for scheduling its own follow-ups.
+                                采纳自上游 0.30:所有者对归档会话"移除并清理"(移出应用并清理
+                                worktree/上传/日志,转录保留在 durable 存储),支持批量与年龄过滤。
                             </p>
                         </li>
                         <li>
-                            <code>goals.ts</code><span class="kinds">hook · section</span>
+                            <code>artifacts.ts</code><span class="kinds">工具</span>
+                            <p>带版本的 HTML、Markdown、SVG 产物,在沙箱中打开。</p>
+                        </li>
+                        <li>
+                            <code>browser.ts</code><span class="kinds">工具 · 段落</span>
                             <p>
-                                After each final answer, runs the session's check and keeps Pi going
-                                while it fails.
+                                Pi 与会话中的人共享的真实浏览器:带元素引用的快照、点击、输入、截图、控制台。计划模式下只许看。
                             </p>
                         </li>
                         <li>
-                            <code>plan.ts</code><span class="kinds">hook · section</span>
+                            <code>subagents.ts</code><span class="kinds">工具 · 任务</span>
                             <p>
-                                Plan mode: calls that would change something are blocked before they
-                                run.
+                                后台子代理。每个由一个锚任务持有;每个回答由一个报告任务带回父会话。
                             </p>
                         </li>
                         <li>
-                            <code>guard.ts</code><span class="kinds">hook</span>
+                            <code>schedules.ts</code><span class="kinds">工具 · 任务</span>
                             <p>
-                                Lancet Guard: risky bash, write, and edit calls wait for a person.
-                                Off by default.
+                                定时消息,以及 Pi 为自己安排后续的工具(频道的总结倒计时由此驱动)。
                             </p>
                         </li>
                         <li>
-                            <code>codemode.ts</code><span class="kinds">tool</span>
+                            <code>goals.ts</code><span class="kinds">钩子 · 段落</span>
                             <p>
-                                Scripts that call the other tools. Each call goes through the same
-                                hooks as a direct one.
+                                每次最终回答后运行会话的完成检查,未通过则让 Pi 继续推进。
                             </p>
                         </li>
                         <li>
-                            <code>memory.ts</code><span class="kinds">tool · section</span>
+                            <code>plan.ts</code><span class="kinds">钩子 · 段落</span>
                             <p>
-                                Lessons Pi keeps across sessions. Pi proposes them with its tool;
-                                the section lists the approved ones for the session's project.
+                                计划模式:会改变内容的调用在运行前被拦下。
                             </p>
                         </li>
                         <li>
-                            <code>pip.ts</code><span class="kinds">tools · section · task</span>
+                            <code>guard.ts</code><span class="kinds">钩子</span>
                             <p>
-                                PiP's tools, its prompt, and the follow task that reports when a
-                                session's run ends. Only PiP's own conversation selects it.
+                                Lancet Guard:高风险 bash、write、edit
+                                调用等待人工批准。默认关闭。
                             </p>
                         </li>
                         <li>
-                            <code>triggers.ts</code><span class="kinds">tool · tasks</span>
+                            <code>codemode.ts</code><span class="kinds">工具</span>
                             <p>
-                                Pull request and repository watches, and Pi's
-                                <code>watch_pr</code> tool. Webhooks need it on.
+                                以脚本调用其他工具。每次调用经过与直接调用相同的钩子。
+                            </p>
+                        </li>
+                        <li>
+                            <code>memory.ts</code><span class="kinds">工具 · 段落</span>
+                            <p>
+                                Pi 跨会话保留的经验。Pi
+                                用其工具提议;段落列出该会话项目已批准的经验。
+                            </p>
+                        </li>
+                        <li>
+                            <code>pip.ts</code><span class="kinds">工具 · 段落 · 任务</span>
+                            <p>
+                                PiP 的工具、提示词,以及会话运行结束时的跟随报告任务。只有 PiP
+                                自己的会话选择它。
+                            </p>
+                        </li>
+                        <li>
+                            <code>triggers.ts</code><span class="kinds">工具 · 任务</span>
+                            <p>
+                                PR 与仓库监视,以及 Pi 的 <code>watch_pr</code>
+                                工具。webhook 需要它开启。
                             </p>
                         </li>
                     </ol>
+
                     <p class="note">
-                        The owner's own modules in <code>~/.picord/extensions/</code> load after
-                        these, stay off until turned on, and import the same packages through a
-                        <code>node_modules</code> link.
+                        本 fork 移除了上游的 pocket-relay(外部聊天平台中继:Discord、Slack、Telegram、Matrix、RSS、HTTP),不接任何聊天平台。
+                        所有者自己的模块在 <code>~/.picord/extensions/</code>
+                        中,在这些之后加载,默认关闭,经 <code>node_modules</code> 链接导入相同的包。
                     </p>
                 </div>
             </section>
@@ -709,70 +680,62 @@
             <section class="section" id="assistant">
                 <div class="wrap">
                     <div class="section-head">
-                        <span class="kicker">PiP and triggers</span>
-                        <h2>Work that crosses sessions.</h2>
+                        <span class="kicker">PiP 与触发器</span>
+                        <h2>跨越会话的工作。</h2>
                         <p>
-                            PiP, watches, and webhooks act for one person, with that person's checks
-                            and spend limit. Like memory, each keeps what it needs in storage, so it
-                            carries on after a restart.
+                            PiP、监视与 webhook 以某个人的身份行动,带着那个人的校验与花费限额。与记忆一样,各自把需要的东西存进存储,重启后继续。
                         </p>
                     </div>
                     <div class="grid map">
                         <article class="card">
                             <code>pip.ts</code>
-                            <h3>PiP's conversation</h3>
+                            <h3>PiP 的会话</h3>
                             <p>
-                                A conversation marked as PiP's and left out of every session list.
-                                It selects its own extensions, without bash, write, or edit. Only
-                                its person can see it, and its tools act through the same commands
-                                as that person.
+                                标记为 PiP 专用、从一切会话列表中隐去的会话。它选择自己的扩展(没有
+                                bash、write、edit)。只有其所有者可见,其工具以与所有者相同的命令行动。
                             </p>
                         </article>
                         <article class="card">
                             <code>pocket.pip-follows</code>
-                            <h3>Follows</h3>
+                            <h3>跟随</h3>
                             <p>
-                                A follow is a durable task that reports to PiP when a session's run
-                                ends. A message PiP sends has a request id made from its tool call,
-                                so a replayed call neither sends nor follows twice.
+                                跟随是持久任务,在会话运行结束时向 PiP
+                                报告。PiP 发出的消息带以其工具调用生成的请求 id,重放的调用既不重发也不重复跟随。
                             </p>
                         </article>
                         <article class="card">
                             <code>watches.ts</code>
-                            <h3>Watches</h3>
+                            <h3>监视</h3>
                             <p>
-                                A watch is a durable task that sleeps until its next look, asks
-                                GitHub through <code>gh</code>, and stores what to tell Pi in its
-                                checkpoint before it sends. The send's request id is the task and
-                                its count, so a restart sends it once.
+                                监视是持久任务,休眠到下一次查看,经 <code>gh</code>
+                                询问 GitHub,发送前把要告诉 Pi 的内容存进检查点。发送的请求 id
+                                由任务与计数构成,重启后只发一次。
                             </p>
                         </article>
                         <article class="card">
                             <code>hooks.ts</code>
-                            <h3>Webhooks</h3>
+                            <h3>Webhook</h3>
                             <p>
-                                <code>/hook/…</code> is outside <code>/api</code> and its sign-in. A
-                                post gets in only with its hook's secret or, for GitHub, a signature
-                                made with it. What it brings reaches Pi between tags, as data
-                                (<code>fence.ts</code>).
+                                <code>/hook/…</code> 在 <code>/api</code>
+                                及其登录之外。携带该 hook
+                                的密钥才能进入;GitHub 的请求则以密钥签名校验。带来的内容经标签围栏
+                                (<code>fence.ts</code>),作为数据交给 Pi。
                             </p>
                         </article>
                         <article class="card">
                             <code>memory.ts</code>
-                            <h3>Memory</h3>
+                            <h3>记忆</h3>
                             <p>
-                                One document for the app. A project is keyed by its git common
-                                folder, so a repository and its worktrees share lessons. A lesson Pi
-                                or a guest saves waits until the owner approves the text they saw.
+                                全应用一份文档。项目按 git 公共文件夹为键,仓库与其 worktree
+                                共享经验。Pi 或访客保存的经验,等所有者批准其看到的文本后生效。
                             </p>
                         </article>
                         <article class="card">
                             <code>model-names.ts</code>
-                            <h3>Who chooses models</h3>
+                            <h3>谁来选模型</h3>
                             <p>
-                                Only people do. Subagents run on their session's model, or one the
-                                owner allowed. PiP passes a model only when its person named it: in
-                                their own messages, or in a watch or webhook they set up.
+                                只有人选。子代理运行在其会话的模型上,或所有者允许的模型。PiP
+                                只在其所有者指名时才传递模型:在其消息里,或在其设置的监视/webhook 里。
                             </p>
                         </article>
                     </div>
@@ -783,57 +746,51 @@
             <section class="section alt" id="security">
                 <div class="wrap split">
                     <div class="split-copy">
-                        <span class="kicker">Security</span>
-                        <h2>Narrow ways in.</h2>
+                        <span class="kicker">安全</span>
+                        <h2>窄入口。</h2>
                         <p>
-                            Pi runs commands as the person who started the server, so the app limits
-                            who can ask it to, and what a page or a reply can do.
+                            Pi 以启动服务的人的身份运行命令,因此应用严格限制谁能提出请求,以及页面与回复能做什么。
                         </p>
                         <ul class="points">
                             <li>
-                                <b>Sign-in.</b> Random tokens, stored hashed, in an HttpOnly,
-                                SameSite=Lax cookie. Invites work once and last 15 minutes, an hour,
-                                a day, or a week; an owner invite always lasts 15 minutes.
+                                <b>登录。</b> 随机令牌哈希存储于 HttpOnly、SameSite=Lax
+                                的 Cookie。本 fork 新增账号密码登录与邀请码注册;未登录一律重定向到登录页。默认严格私有隔离:每人只见自己的会话与主动共享的群组。
                             </li>
                             <li>
-                                <b>Requests.</b> Anything under <code>/api</code> that changes
-                                something must carry an <code>X-Pocket</code> header, which a form
-                                on another site cannot send. Webhook posts go to
-                                <code>/hook/…</code> and need their hook's secret instead.
+                                <b>请求。</b> <code>/api</code>
+                                之下任何会改变内容的请求,必须携带 <code>X-Pocket</code>
+                                头,其他站点的表单无法伪造。Webhook 走
+                                <code>/hook/…</code>,以各自的密钥校验。
                             </li>
                             <li>
-                                <b>Pages.</b> The app loads nothing from other sites: its policy
-                                allows only its own files and its hashed inline scripts. Replies are
-                                sanitized, and artifacts run in a sandbox with no access to the app.
+                                <b>页面。</b> 应用不从其他站点加载任何东西:策略只允许自身文件与哈希过的内联脚本。回复经净化,artifacts
+                                在与应用隔离的沙箱中运行。
                             </li>
                             <li>
-                                <b>Browser.</b> Pages run in Chromium on the server and reach people
-                                only as images, so they never touch the app. Using one takes
-                                steering rights, files are the owner's, and each address someone
-                                opens shows in the chat.
+                                <b>浏览器。</b> 页面在服务器的 Chromium
+                                中运行,对人只以图像呈现,永不接触应用。使用需转向权限,文件属所有者,打开的每个地址都会显示在聊天里。
                             </li>
                             <li>
-                                <b>Roles.</b> Owner, steer, or view, in every session or only one.
-                                Lancet Guard approvals can require someone other than whoever asked.
+                                <b>角色。</b>
+                                所有者、转向、只读,可作用于全部会话或单个会话。Lancet
+                                Guard 的批准可要求由非请求者答复。
                             </li>
                             <li>
-                                <b>From outside.</b> Webhooks and watches act as the person who set
-                                them up. GitHub's issues, pull requests, and comments count only
-                                from people who can write to the repository, unless that person
-                                chose <b>From anyone</b>.
+                                <b>来自外部。</b> Webhook 与监视以设置者的身份行动。GitHub
+                                的 issue、PR 与评论,只统计有仓库写权限的人,除非设置者选择<b>任何人</b>。
                             </li>
                         </ul>
                     </div>
                     <div class="callout">
                         <b>!</b>
                         <p>
-                            <b>Steering means shell access.</b> Anyone who can steer can make Pi run
-                            commands on the machine. Worktrees keep a session's files apart, and
-                            spend limits stop runs, but neither is a sandbox.
-                            <a href="https://github.com/Feng-H/picord/blob/main/SECURITY.md"
+                            <b>转向即 shell 权限。</b> 能转向的人就能让 Pi
+                            在这台机器上运行命令。worktree
+                            让会话文件彼此分开,花费限额能停掉运行——但都不是沙箱。<a
+                                href="https://github.com/Feng-H/picord/blob/main/SECURITY.md"
                                 >SECURITY.md</a
                             >
-                            spells out what is protected.
+                            详述受保护的范围。
                         </p>
                     </div>
                 </div>
@@ -843,66 +800,59 @@
             <section class="section" id="practices">
                 <div class="wrap">
                     <div class="section-head">
-                        <span class="kicker">Practices</span>
-                        <h2>Built to be changed.</h2>
+                        <span class="kicker">实践</span>
+                        <h2>为改动而生。</h2>
                         <p>
-                            Pi Pocket is often edited by Pi from inside itself, so its code has to
-                            stay easy to read and safe to change while it runs.
+                            Picord 常常被 Pi 从内部修改,所以代码必须保持易读、改动安全、运行时可变。
                         </p>
                     </div>
                     <div class="grid map">
                         <article class="card">
-                            <code>no build</code>
-                            <h3>Nothing to compile</h3>
+                            <code>无构建</code>
+                            <h3>无需编译</h3>
                             <p>
-                                Node runs the server's TypeScript by stripping its types, so only
-                                erasable syntax is used. The web app is plain ES modules with Preact
-                                and htm.
+                                Node 以剥离类型的方式运行服务端
+                                TypeScript,因此只使用可擦除语法。前端是 Preact 与 htm 的原生 ES 模块。
                             </p>
                         </article>
                         <article class="card">
-                            <code>dependencies</code>
-                            <h3>Few dependencies</h3>
+                            <code>依赖</code>
+                            <h3>少依赖</h3>
                             <p>
-                                Earendil's Pi packages, pinned to the versions tested, plus Preact,
-                                htm, marked, DOMPurify, qrcode, undici, and jiti. Web Push is built
-                                in.
+                                Earendil 的 Pi
+                                系列包,锁定在测试过的版本;另有 Preact、htm、marked、DOMPurify、qrcode、undici
+                                与 jiti。Web Push 内置。
                             </p>
                         </article>
                         <article class="card">
                             <code>npm test</code>
-                            <h3>Tested on the real core</h3>
+                            <h3>在真实核心上测试</h3>
                             <p>
-                                Tests run the real server against a scripted model: real SQLite,
-                                real git repositories, and restarts by reopening the same data
-                                folder, with the clock moved forward for schedules. Parts of the web
-                                app are tested in a real Chromium.
+                                测试运行真实服务,配一个脚本化模型:真实 SQLite、真实 git
+                                仓库,以重新打开同一数据目录模拟重启,定时测试把时钟拨快。前端的一部分在真实
+                                Chromium 中测试。
                             </p>
                         </article>
                         <article class="card">
                             <code>npm run check</code>
-                            <h3>Type-checked</h3>
+                            <h3>类型检查</h3>
                             <p>
-                                The TypeScript compiler checks the server and the tests. Web files
-                                get Node's syntax check after every edit, since a broken one blanks
-                                every open tab.
+                                TypeScript 编译器检查服务端与测试。前端文件每次编辑后做 Node
+                                语法检查——一个坏文件会让所有打开的标签页白屏。
                             </p>
                         </article>
                         <article class="card">
                             <code>AGENTS.md</code>
-                            <h3>Safe to edit live</h3>
+                            <h3>可热改</h3>
                             <p>
-                                Web files reload every browser, extensions reinstall in place, and
-                                anything else waits for a restart from the menu, after which running
-                                work resumes.
+                                前端文件改动即时刷新到所有浏览器,扩展就地重装;其余改动从菜单触发重启,重启后运行中的工作继续。
                             </p>
                         </article>
                         <article class="card">
                             <code>docs/map.md</code>
-                            <h3>Written to be read</h3>
+                            <h3>写给人看</h3>
                             <p>
-                                Each module starts with what it owns, comments say why in plain
-                                sentences, and a short map of the code helps agents find their way.
+                                每个模块开头声明它管什么,注释用平实的句子讲为什么,还有一份代码地图帮 agent 找路。
                             </p>
                         </article>
                     </div>
@@ -914,29 +864,29 @@
             <div class="wrap">
                 <div>
                     <a class="logo" href="./"
-                        ><img src="icon.svg" alt="" width="26" height="26" />Pi Pocket</a
+                        ><img src="icon.svg" alt="" width="26" height="26" />Picord</a
                     >
-                    <small>A self-hosted web app for Pi.</small>
+                    <small>面向 Pi 的自托管 Web 应用。</small>
                 </div>
                 <div>
-                    <nav class="footer-links" aria-label="Footer">
-                        <a href="./">Home</a>
+                    <nav class="footer-links" aria-label="页脚">
+                        <a href="./">首页</a>
                         <a href="https://github.com/Feng-H/picord">GitHub</a>
                         <a href="https://github.com/Feng-H/picord/blob/main/docs/map.md"
-                            >Code map</a
+                            >代码地图</a
                         >
                         <a href="https://github.com/Feng-H/picord/blob/main/docs/features.md"
-                            >Feature tour</a
+                            >功能全览</a
                         >
                         <a href="https://earendil.com/posts/pi-durable/">Pi Durable</a>
-                        <a href="durable.html">Pi Durable guide</a>
-                        <a href="architecture.html">Architecture guide</a>
+                        <a href="durable.html">Pi Durable 指南</a>
+                        <a href="architecture.html">架构指南</a>
                     </nav>
                     <small
-                        >Geist and JetBrains Mono are used under the SIL Open Font License (<a
+                        >Geist 与 JetBrains Mono 依 SIL Open Font License 使用(<a
                             href="fonts/Geist-OFL.txt"
                             >Geist</a
-                        >, <a href="fonts/OFL.txt">JetBrains Mono</a>).</small
+                        >、<a href="fonts/OFL.txt">JetBrains Mono</a>)。</small
                     >
                 </div>
             </div>
