@@ -1,13 +1,14 @@
 /** The launcher's command line: its options, from arguments and the environment, and its help. */
+import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseSocketPath, socketArgument } from "../server/socket-path.ts";
 import { ACCESS_MODES, type AccessMode, isAccessMode } from "./access.ts";
 import { restoreTerminal } from "./term.ts";
 
-const HELP = `Pi Pocket: a durable, multiplayer, mobile-first web app for Pi agents.
+const HELP = `Picord: a durable, multiplayer, mobile-first web app for Pi agents.
 
-Usage: pi-pocket [options]
+Usage: picord [options]
 
   -a, --access MODE   How other devices reach this server:
                         local            this device only
@@ -19,7 +20,7 @@ Usage: pi-pocket [options]
   -y, --yes           Use the last choice without asking
   -p, --port N        Port (default 8787)
       --cwd DIR       Folder for new sessions (default: the current folder)
-      --data DIR      Data folder (default ~/.pi-pocket)
+      --data DIR      Data folder (default ~/.picord)
       --host HOST     Listen on this address instead of choosing an access mode; it overrides the
                       address a named mode would pick, except with --access tailscale-serve, which
                       always listens on 127.0.0.1
@@ -32,8 +33,15 @@ Usage: pi-pocket [options]
                       access choice is not saved
   -h, --help          Show this help
 
-Environment: PI_POCKET_ACCESS, PI_POCKET_PORT, PI_POCKET_DIR, PI_POCKET_HOST, PI_POCKET_SOCKET,
-PI_POCKET_GUARD=off`;
+Environment: PICORD_ACCESS, PICORD_PORT, PICORD_DIR, PICORD_HOST, PICORD_SOCKET,
+PICORD_GUARD=off (legacy PI_POCKET_* names are also accepted)`;
+
+function defaultDataDir(): string {
+    const picordDir = join(homedir(), ".picord");
+    const legacyDir = join(homedir(), ".pi-pocket");
+
+    return !existsSync(picordDir) && existsSync(legacyDir) ? legacyDir : picordDir;
+}
 
 export interface Options {
     access: AccessMode | undefined;
@@ -48,15 +56,15 @@ export interface Options {
 }
 
 export function parseArgs(argv: string[]): Options {
-    const envAccess = process.env.PI_POCKET_ACCESS;
+    const envAccess = process.env.PICORD_ACCESS ?? process.env.PI_POCKET_ACCESS;
     const options: Options = {
         access: isAccessMode(envAccess) ? envAccess : undefined,
         yes: false,
-        host: process.env.PI_POCKET_HOST || undefined,
-        port: Number(process.env.PI_POCKET_PORT ?? 8787),
-        socket: process.env.PI_POCKET_SOCKET,
+        host: (process.env.PICORD_HOST ?? process.env.PI_POCKET_HOST) || undefined,
+        port: Number(process.env.PICORD_PORT ?? process.env.PI_POCKET_PORT ?? 8787),
+        socket: process.env.PICORD_SOCKET ?? process.env.PI_POCKET_SOCKET,
         cwd: process.cwd(),
-        data: resolve(process.env.PI_POCKET_DIR ?? join(homedir(), ".pi-pocket")),
+        data: resolve(process.env.PICORD_DIR ?? process.env.PI_POCKET_DIR ?? defaultDataDir()),
         rotateToken: false,
         desktop: false,
     };

@@ -108,12 +108,12 @@ export class LancetGuard {
         | ((tool: string, args: Record<string, unknown>, cwd: string) => string | undefined)
         | undefined;
 
-    /** True when PI_POCKET_GUARD=off turned the guard off for this process. */
-    readonly disabled = process.env.PI_POCKET_GUARD === "off";
+    /** True when PICORD_GUARD=off / PI_POCKET_GUARD=off turned the guard off for this process. */
+    readonly disabled = (process.env.PICORD_GUARD ?? process.env.PI_POCKET_GUARD) === "off";
 
     constructor() {
         const candidates = [
-            process.env.PI_POCKET_LANCET_DIR,
+            process.env.PICORD_LANCET_DIR ?? process.env.PI_POCKET_LANCET_DIR,
             join(getAgentDir(), "npm", "node_modules", "specpi-lancet-guard"),
             join(
                 getAgentDir(),

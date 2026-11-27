@@ -409,8 +409,16 @@ export class PocketApp {
         return presentedBuild(this.#code, this.webs.presentations());
     }
     /** Set by the launcher over IPC; undefined when the server runs on its own. */
-    access: AccessInfo | undefined = process.env.PI_POCKET_PUBLIC_URL?.trim()?.startsWith("https://")
-        ? { mode: "custom", label: "public url", url: process.env.PI_POCKET_PUBLIC_URL.trim() }
+    access: AccessInfo | undefined = (
+        process.env.PICORD_PUBLIC_URL ?? process.env.PI_POCKET_PUBLIC_URL
+    )
+        ?.trim()
+        ?.startsWith("https://")
+        ? {
+              mode: "custom",
+              label: "public url",
+              url: (process.env.PICORD_PUBLIC_URL ?? process.env.PI_POCKET_PUBLIC_URL)!.trim(),
+          }
         : undefined;
     harness!: Harness;
     models!: ModelRuntime;
@@ -567,15 +575,19 @@ export class PocketApp {
             version: pocketVersion(),
             supervised: options.supervised && options.restart !== undefined,
             // The launcher says so when it goes back to the version before a new one that does not start.
-            rollback: process.env.PI_POCKET_ROLLBACK === "1",
-            npmRollback: process.env.PI_POCKET_NPM_ROLLBACK === "1",
+            rollback: (process.env.PICORD_ROLLBACK ?? process.env.PI_POCKET_ROLLBACK) === "1",
+            npmRollback:
+                (process.env.PICORD_NPM_ROLLBACK ?? process.env.PI_POCKET_NPM_ROLLBACK) === "1",
             restart: () => options.restart?.(),
             quiesce: (paused) => this.pauseReloads(paused),
             busy: () => this.#busy.size,
             log: (line) => this.#log(line),
-            // Releases from somewhere else: a fork's, or a copy of Pi Pocket's repository to try updates on.
-            ...(process.env.PI_POCKET_UPDATES_REPO
-                ? { repository: process.env.PI_POCKET_UPDATES_REPO }
+            // Releases from somewhere else: a fork's, or a copy of Picord's repository to try updates on.
+            ...(process.env.PICORD_UPDATES_REPO ?? process.env.PI_POCKET_UPDATES_REPO
+                ? {
+                      repository:
+                          process.env.PICORD_UPDATES_REPO ?? process.env.PI_POCKET_UPDATES_REPO,
+                  }
                 : {}),
         });
         this.config = new ConfigStore(options.dataDir);
@@ -2899,7 +2911,9 @@ export class PocketApp {
                 // Whether a browser may keep sessions on the device (IndexedDB), for every tab and across reloads:
                 // `PI_POCKET_SESSION_CACHE=off` keeps them in each tab's memory only, and has browsers drop what they
                 // kept on the device.
-                deviceCache: process.env.PI_POCKET_SESSION_CACHE !== "off",
+                deviceCache:
+                    (process.env.PICORD_SESSION_CACHE ?? process.env.PI_POCKET_SESSION_CACHE) !==
+                    "off",
                 // This server's clock: peek tiles compare the browser's looks with when runs ended here.
                 now: Date.now(),
                 // Collaboration features: 2 adds roles, take turns, reactions, pins, notes, mentions, and push.
@@ -3572,7 +3586,9 @@ export class PocketApp {
      * tunnel can never sign in again (its address is gone, and their cookie works only there), so they are removed.
      */
     setReach(access: AccessInfo | undefined): void {
-        const publicUrl = process.env.PI_POCKET_PUBLIC_URL?.trim();
+        const publicUrl = (
+            process.env.PICORD_PUBLIC_URL ?? process.env.PI_POCKET_PUBLIC_URL
+        )?.trim();
         const effectiveAccess = publicUrl && publicUrl.startsWith("https://")
             ? (access ? { ...access, url: access.url ?? publicUrl } : { mode: "custom", label: "public url", url: publicUrl })
             : access;

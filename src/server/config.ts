@@ -29,9 +29,18 @@ export function modulesWith(name: string, from = APP_ROOT): string {
     }
 }
 
-/** Where Pi Pocket keeps its database, users, uploads, and logs. */
+/** Where Picord keeps its database, users, uploads, and logs. */
 export function dataDir(): string {
-    return process.env.PI_POCKET_DIR ?? join(homedir(), ".pi-pocket");
+    const explicit = process.env.PICORD_DIR ?? process.env.PI_POCKET_DIR;
+
+    if (explicit !== undefined) {
+        return explicit;
+    }
+
+    const picordDir = join(homedir(), ".picord");
+    const legacyDir = join(homedir(), ".pi-pocket");
+
+    return !existsSync(picordDir) && existsSync(legacyDir) ? legacyDir : picordDir;
 }
 
 /** owner: everything. guest: steers Pi (which can run commands here). viewer: reads, chats, and reacts, never steers. */

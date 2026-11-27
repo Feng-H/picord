@@ -24,6 +24,8 @@ import {
 } from "./socket-path.ts";
 import { restoreMissingNpmPackage } from "./update-state.ts";
 
+process.title = "picord-server";
+
 // A resident process can reach recovery even when a stopped package switch left no live folder.
 restoreMissingNpmPackage(APP_ROOT);
 
@@ -33,17 +35,21 @@ const RESTART_CODE = 75;
  * the server has run, it keeps trying, since the port may still be closing or the address may come back.
  */
 const CONFIG_ERROR_CODE = 78;
-const launcher = process.env.PI_POCKET_LAUNCHER === "1" && typeof process.send === "function";
+const launcher =
+    (process.env.PICORD_LAUNCHER ?? process.env.PI_POCKET_LAUNCHER) === "1" &&
+    typeof process.send === "function";
 
 function parseArgs(argv: string[]) {
     const options = {
-        host: process.env.PI_POCKET_HOST ?? "127.0.0.1",
-        port: Number(process.env.PI_POCKET_PORT ?? 8787),
-        socket: process.env.PI_POCKET_SOCKET as string | undefined,
+        host: process.env.PICORD_HOST ?? process.env.PI_POCKET_HOST ?? "127.0.0.1",
+        port: Number(process.env.PICORD_PORT ?? process.env.PI_POCKET_PORT ?? 8787),
+        socket: (process.env.PICORD_SOCKET ?? process.env.PI_POCKET_SOCKET) as string | undefined,
         cwd: process.cwd(),
         data: dataDir(),
         rotateToken: false,
-        keepAliveSeconds: Number(process.env.PI_POCKET_KEEPALIVE_SECONDS?.trim() || 5),
+        keepAliveSeconds: Number(
+            (process.env.PICORD_KEEPALIVE_SECONDS ?? process.env.PI_POCKET_KEEPALIVE_SECONDS)?.trim() || 5,
+        ),
     };
     let tcpFlag: string | undefined;
 
@@ -76,7 +82,7 @@ function parseArgs(argv: string[]) {
             options.rotateToken = true;
         } else if (arg === "--help" || arg === "-h") {
             console.log(
-                "pi-pocket [--host 127.0.0.1] [--port 8787 | --socket PATH] [--cwd DIR] [--data DIR] [--rotate-token]",
+                "picord [--host 127.0.0.1] [--port 8787 | --socket PATH] [--cwd DIR] [--data DIR] [--rotate-token]",
             );
             process.exit(0);
         } else {
@@ -89,9 +95,12 @@ function parseArgs(argv: string[]) {
         options.keepAliveSeconds < 1 ||
         options.keepAliveSeconds > 3600
     ) {
-        throw new Error(
-            "PI_POCKET_KEEPALIVE_SECONDS must be a whole number of seconds from 1 to 3600",
-        );
+        const keepAliveEnv =
+            process.env.PICORD_KEEPALIVE_SECONDS !== undefined
+                ? "PICORD_KEEPALIVE_SECONDS"
+                : "PI_POCKET_KEEPALIVE_SECONDS";
+
+        throw new Error(`${keepAliveEnv} must be a whole number of seconds from 1 to 3600`);
     }
 
     options.socket = parseSocketPath(options.socket);
@@ -109,6 +118,7 @@ function parseArgs(argv: string[]) {
 
 const options = parseArgs(process.argv.slice(2));
 
+process.env.PICORD_DIR = options.data;
 process.env.PI_POCKET_DIR = options.data;
 // The data folder holds the database, sign-in tokens, push keys, and uploads: only this user may open it, also when
 // --data named a folder that already existed.
@@ -252,8 +262,8 @@ const [{ PocketApp: App }, { createHandler: makeHandler }, { watchTree }] = awai
 const opened = await App.open({
     dataDir: options.data,
     defaultCwd: options.cwd,
-    supervised: process.env.PI_POCKET_SUPERVISED === "1",
-    // For updates of Pi Pocket itself, which restart the server once the new version is in place.
+    supervised: (process.env.PICORD_SUPERVISED ?? process.env.PI_POCKET_SUPERVISED) === "1",
+    // For updates of Picord itself, which restart the server once the new version is in place.
     restart: () => void stop(RESTART_CODE),
 });
 

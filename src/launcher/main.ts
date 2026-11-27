@@ -79,6 +79,8 @@ const UPDATE_START_LIMIT_MS = 5 * 60_000;
 
 const options = parseArgs(process.argv.slice(2));
 
+process.title = "picord";
+
 mkdirSync(options.data, { recursive: true, mode: 0o700 });
 const settingsFile = join(options.data, "launcher.json");
 /**
@@ -622,9 +624,14 @@ function startServer(first: boolean): void {
     const flags = ["--disable-warning=ExperimentalWarning", ...SERVER_FLAGS];
     const proc = spawn(process.execPath, [...flags, ...args], {
         stdio: ["ignore", "pipe", "pipe", "ipc"],
-        // PI_POCKET_ROLLBACK: this launcher goes back to the version before an update that does not start.
+        // PICORD_ROLLBACK / PI_POCKET_ROLLBACK: this launcher goes back to the version before an update that does not start.
         env: {
             ...process.env,
+            PICORD_SUPERVISED: "1",
+            PICORD_LAUNCHER: "1",
+            PICORD_ROLLBACK: "1",
+            PICORD_NPM_ROLLBACK: "1",
+            PICORD_SOCKET: undefined,
             PI_POCKET_SUPERVISED: "1",
             PI_POCKET_LAUNCHER: "1",
             PI_POCKET_ROLLBACK: "1",
@@ -1283,7 +1290,7 @@ async function main(): Promise<void> {
             }
         }
 
-        log(dim(`  Starting Pi Pocket (${modeLabel()})…`));
+        log(dim(`  Starting Picord (${modeLabel()})…`));
         startServer(true);
 
         if (mode === "cloudflare" && binary !== undefined) {

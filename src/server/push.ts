@@ -66,7 +66,9 @@ export type EmbedderMessage = PushMessage & {
 export const DEFAULT_SUBJECT = "mailto:pi-pocket@example.com";
 
 export function defaultSubject(): string {
-    const publicUrl = process.env.PI_POCKET_PUBLIC_URL?.trim();
+    const publicUrl = (
+        process.env.PICORD_PUBLIC_URL ?? process.env.PI_POCKET_PUBLIC_URL
+    )?.trim();
 
     return publicUrl && publicUrl.startsWith("https://") ? publicUrl : DEFAULT_SUBJECT;
 }

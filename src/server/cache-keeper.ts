@@ -219,7 +219,8 @@ export class CacheKeeper {
             },
             clearTimer: clearTimeout,
             log: () => {},
-            disabled: () => process.env.PI_POCKET_CACHE_KEEPER === "off",
+            disabled: () =>
+                (process.env.PICORD_CACHE_KEEPER ?? process.env.PI_POCKET_CACHE_KEEPER) === "off",
             ...deps,
         };
     }

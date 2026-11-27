@@ -43,7 +43,8 @@ function pageFacts(
 ): { user: ReturnType<typeof helloUser>; build: string } | undefined {
     const user = auth.user(request);
 
-    return user === undefined || process.env.PI_POCKET_SESSION_CACHE === "off"
+    return user === undefined ||
+        (process.env.PICORD_SESSION_CACHE ?? process.env.PI_POCKET_SESSION_CACHE) === "off"
         ? undefined
         : { user: helloUser(user), build: app.build };
 }

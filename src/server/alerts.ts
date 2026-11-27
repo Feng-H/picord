@@ -78,7 +78,9 @@ export class Alerts {
         }
 
         // Push services want a real contact; Apple rejects placeholders. A tunnel's https address will do.
-        const publicUrl = process.env.PI_POCKET_PUBLIC_URL?.trim();
+        const publicUrl = (
+            process.env.PICORD_PUBLIC_URL ?? process.env.PI_POCKET_PUBLIC_URL
+        )?.trim();
         const configuredUrl = publicUrl && publicUrl.startsWith("https://") ? publicUrl : undefined;
         const subject = configuredUrl ?? (app.access?.url?.startsWith("https://") ? app.access.url : undefined);
 

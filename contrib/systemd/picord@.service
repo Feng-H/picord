@@ -1,0 +1,38 @@
+# Picord as a systemd template unit. The instance name is the access mode; see docs/systemd.md.
+
+[Unit]
+Description=Picord (%i access)
+Documentation=https://github.com/Feng-H/picord/blob/main/docs/systemd.md
+Wants=network-online.target
+After=network-online.target tailscaled.service
+
+[Service]
+Type=simple
+User=picord
+Group=picord
+
+Environment=PICORD_HOME=/opt/picord
+Environment=HOME=/var/lib/picord
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+EnvironmentFile=-/etc/picord.env
+
+WorkingDirectory=/srv/picord
+
+# %i is the access mode: local, lan, cloudflare, tailscale, or tailscale-serve.
+ExecStart=/usr/bin/env node ${PICORD_HOME}/bin/picord.js --access %i --port 8787 --data /var/lib/picord --cwd /srv/picord
+
+Restart=on-failure
+RestartSec=5
+KillMode=mixed
+TimeoutStopSec=20
+
+StateDirectory=picord
+StateDirectoryMode=0700
+UMask=0077
+LimitNOFILE=65536
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

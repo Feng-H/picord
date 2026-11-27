@@ -25,8 +25,8 @@
         "url": "https://github.com/Feng-H/picord/issues"
     },
     "bin": {
-        "picord": "bin/pi-pocket.js",
-        "pi-pocket": "bin/pi-pocket.js"
+        "picord": "bin/picord.js",
+        "pi-pocket": "bin/picord.js"
     },
     "files": [
         "bin/",
@@ -44,8 +44,8 @@
         "node": ">=22.19"
     },
     "scripts": {
-        "start": "node bin/pi-pocket.js",
-        "dev": "node bin/pi-pocket.js --cwd .",
+        "start": "node bin/picord.js",
+        "dev": "node bin/picord.js --cwd .",
         "check": "tsc --noEmit -p . && node test/types-file.ts && node docs-site/check-reference.mjs",
         "check:sandbox": "instabox run --push . --timeout 5m -- 'npm ci && npm run check && npm run lint'",
         "test": "node --test --test-concurrency=4 --test-timeout=600000 test/*.test.ts",

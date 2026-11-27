@@ -75,12 +75,14 @@ export async function pushRoutes(api: ApiRequest, action: string | undefined): P
 
     if (action === "test") {
         const test = {
-            title: "Pi Pocket",
+            title: "Picord",
             body: `Notifications work on this device, ${user.name}.`,
             url: "/",
             tag: "test",
         };
-        const publicUrl = process.env.PI_POCKET_PUBLIC_URL?.trim();
+        const publicUrl = (
+            process.env.PICORD_PUBLIC_URL ?? process.env.PI_POCKET_PUBLIC_URL
+        )?.trim();
         const configuredUrl = publicUrl && publicUrl.startsWith("https://") ? publicUrl : undefined;
         const subject = configuredUrl ?? (app.access?.url?.startsWith("https://") ? app.access.url : undefined);
         const sent =
