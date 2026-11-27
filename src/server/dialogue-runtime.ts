@@ -25,6 +25,7 @@ import {
     formatRulePrompt,
     formatRuleStatus,
     loadDefaultRules,
+    resolveRulesFilePath,
     watchRuleFiles,
     type ConversationRule,
     type DispatchedTask,
@@ -91,6 +92,7 @@ export interface DialogueRuntimeHost {
     watchFiles?: boolean;
     loadRules?: () => ConversationRule[];
     ruleStore?: RuleEngineStore;
+    onSchedulesChanged?: (channelOrSession: string) => void;
 }
 
 const DEFAULT_TICK_INTERVAL_MS = 60_000;
@@ -300,6 +302,15 @@ export class DialogueRuntime {
             try {
                 appendEngineEventLog(logPath, event);
             } catch {}
+        }
+
+        if (
+            event.channel &&
+            (LIFECYCLE_EVENTS.has(event.type) ||
+                event.type === "schedule_projected" ||
+                event.type === "rule_fired")
+        ) {
+            this.#host.onSchedulesChanged?.(event.channel);
         }
 
         if (!event.channel || !IN_CHANNEL_EVENTS.has(event.type)) {
@@ -579,9 +590,11 @@ export class DialogueRuntime {
     #createRuleEngine(): ConversationRuleEngine {
         const store = this.#host.ruleStore ?? new FileRuleEngineStore(this.#host.dataDir);
         const rules = this.#loadRules();
+        const rulesFile = resolveRulesFilePath(this.#host.dataDir, this.#host.workspaceDir);
 
         return new ConversationRuleEngine({
             rules,
+            rulesFile,
             store,
             onDispatch: (task) => {
                 if (this.#closed) {

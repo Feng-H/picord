@@ -224,3 +224,166 @@ test("Issue #25 Bug#4: empty rules.json disables rules, removes persisted timers
         rmSync(tempDir, { recursive: true, force: true });
     }
 });
+
+test("Issue #26: projected schedule Edit/Pause/Cancel maps back to rules.json and rule-states.json", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "pi-pocket-rule-mutate-"));
+
+    try {
+        const wsDir = join(tempDir, "ws");
+        const dataDir = join(tempDir, "data");
+        const rulesDir = join(wsDir, ".dialogue-session");
+        const ruleFile = join(rulesDir, "rules.json");
+        const { mkdirSync, chmodSync } = await import("node:fs");
+
+        mkdirSync(rulesDir, { recursive: true });
+        mkdirSync(dataDir, { recursive: true });
+
+        const siblingRule = {
+            id: "sibling-rule",
+            title: "Sibling Rule",
+            channel: "ops",
+            on: "silence",
+            after: "45m",
+            action: {
+                type: "prompt",
+                instruction: "Keep sibling untouched",
+                silent: true,
+                extraNote: "preserve-me",
+            },
+        };
+        const initialRules = [
+            {
+                id: "card-summary",
+                title: "小窗总结",
+                channel: "smalltalk",
+                on: "silence",
+                after: "60m",
+                action: {
+                    type: "prompt",
+                    instruction: "初始总结指令",
+                    silent: true,
+                },
+            },
+            siblingRule,
+        ];
+
+        writeFileSync(ruleFile, `${JSON.stringify({ rules: initialRules }, null, 2)}\n`, "utf8");
+
+        const store = new FileRuleEngineStore(dataDir);
+        const loaded = JSON.parse(readFileSync(ruleFile, "utf8")) as { rules: ConversationRule[] };
+        const engine = new ConversationRuleEngine({
+            rules: loaded.rules,
+            store,
+            rulesFile: ruleFile,
+        });
+
+        engine.touch("smalltalk", 10_000, 1);
+
+        // 1. Edit text -> updates action.instruction & hot-reloads; preserves sibling rule verbatim
+        const updatedText = engine.updateFromScheduleMutation("card-summary", {
+            text: "新的总结提示词",
+            everyMinutes: 60,
+            next: 10_000 + 60 * 60_000,
+            hasEvery: true,
+        });
+
+        assert.equal(updatedText.action.instruction, "新的总结提示词");
+        assert.equal(updatedText.after, "60m");
+
+        const afterTextFile = JSON.parse(readFileSync(ruleFile, "utf8")) as {
+            rules: Array<Record<string, unknown>>;
+        };
+
+        assert.equal(afterTextFile.rules.length, 2);
+        assert.deepEqual(afterTextFile.rules[1], siblingRule);
+        assert.equal(
+            (afterTextFile.rules[0]!.action as Record<string, unknown>).instruction,
+            "新的总结提示词",
+        );
+
+        // 2. Edit everyMinutes (60 -> 120) while text equals display title -> does not clobber instruction
+        const updatedEvery = engine.updateFromScheduleMutation("card-summary", {
+            text: "小窗总结",
+            everyMinutes: 120,
+            hasEvery: true,
+        });
+
+        assert.equal(updatedEvery.after, "120m");
+        assert.equal(updatedEvery.action.instruction, "新的总结提示词");
+
+        // 3. next-only mutation without every throws 400
+        assert.throws(
+            () =>
+                engine.updateFromScheduleMutation("card-summary", {
+                    text: "should fail",
+                    next: 99_999,
+                    hasEvery: false,
+                }),
+            /投影任务由静默规则驱动/,
+        );
+
+        // 4. Pause & resume persist across restart and block tick()
+        engine.pauseRule("card-summary", true, "John", 20_000);
+        await new Promise((resolve) => setTimeout(resolve, 20));
+
+        const storeAfterRestart = new FileRuleEngineStore(dataDir);
+        const engineRestarted = new ConversationRuleEngine({
+            rules: JSON.parse(readFileSync(ruleFile, "utf8")).rules as ConversationRule[],
+            store: storeAfterRestart,
+            rulesFile: ruleFile,
+        });
+
+        assert.equal(engineRestarted.getState("card-summary")?.pausedBy, "John");
+        assert.ok(engineRestarted.getState("card-summary")?.paused !== undefined);
+        const pausedSchedules = engineRestarted.activeSchedulesForSession(1, "smalltalk", 20_000);
+
+        assert.equal(pausedSchedules.length, 1);
+        assert.ok(pausedSchedules[0]!.paused !== undefined);
+        assert.equal((await engineRestarted.tick(20_000 + 200 * 60_000)).length, 0);
+
+        // Resuming schedules countdown without immediately firing
+        engineRestarted.pauseRule("card-summary", false, "John", 30_000);
+        assert.equal(engineRestarted.getState("card-summary")?.paused, undefined);
+        assert.equal((await engineRestarted.tick(30_000)).length, 0);
+
+        // 5. Cancel removes only target rule, preserves sibling rule, and cleans state
+        engineRestarted.cancelRule("card-summary");
+        await new Promise((resolve) => setTimeout(resolve, 20));
+
+        const afterCancelFile = JSON.parse(readFileSync(ruleFile, "utf8")) as {
+            rules: Array<Record<string, unknown>>;
+        };
+
+        assert.deepEqual(afterCancelFile.rules, [siblingRule]);
+        assert.equal(engineRestarted.getState("card-summary"), undefined);
+        assert.equal(engineRestarted.activeSchedules("smalltalk", 40_000).length, 0);
+
+        // 6. Missing rule returns 400 "规则已移除"
+        assert.throws(
+            () => engineRestarted.pauseRule("card-summary", true, "John"),
+            /规则已移除/,
+        );
+        assert.throws(
+            () => engineRestarted.cancelRule("card-summary"),
+            /规则已移除/,
+        );
+
+        // 7. Unwritable rules.json throws 500 error (never swallowed)
+        chmodSync(ruleFile, 0o444);
+
+        try {
+            assert.throws(
+                () =>
+                    engineRestarted.updateFromScheduleMutation("sibling-rule", {
+                        everyMinutes: 90,
+                        hasEvery: true,
+                    }),
+                /写入规则文件失败/,
+            );
+        } finally {
+            chmodSync(ruleFile, 0o644);
+        }
+    } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+    }
+});

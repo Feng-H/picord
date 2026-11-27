@@ -383,6 +383,8 @@ export interface OpenOptions {
     browser?: string | null;
     /** The home folder, whose `.agents/skills/` every session has. Undefined is Pi's: `$HOME`. Tests use their own. */
     home?: string;
+    /** Workspace directory for `.dialogue-session/` rule/archive files; defaults to `process.cwd()`. Tests isolate it. */
+    workspaceDir?: string;
     /** Restart the server, as Menu → Restart server does (`main.ts`); undefined where nothing can (tests). */
     restart?: () => void;
     /** Where Pi Pocket's own code is, for its updates; tests give a checkout of their own. */
@@ -397,6 +399,7 @@ export class PocketApp {
     readonly guard = new LancetGuard();
     readonly dataDir: string;
     readonly defaultCwd: string;
+    readonly workspaceDir: string;
     readonly supervised: boolean;
     readonly startedAt = Date.now();
     readonly #code = serverBuild();
@@ -569,6 +572,7 @@ export class PocketApp {
         this.now = options.now ?? Date.now;
         this.dataDir = options.dataDir;
         this.defaultCwd = options.defaultCwd;
+        this.workspaceDir = options.workspaceDir ?? process.cwd();
         this.supervised = options.supervised;
         this.updates = new Updates({
             appRoot: options.appRoot ?? APP_ROOT,
@@ -725,7 +729,7 @@ export class PocketApp {
         this.guard.protect = (tool, args, cwd) => this.secrets.blocked(tool, args, cwd);
         this.dialogue = new DialogueRuntime({
             dataDir: this.dataDir,
-            workspaceDir: process.cwd(),
+            workspaceDir: this.workspaceDir,
             build: this.build,
             pid: process.pid,
             listSessions: () =>
@@ -768,12 +772,39 @@ export class PocketApp {
             visibleEntry: (id, entryId) => this.transcripts.visibleEntry(id, entryId),
             submitTurn: (id, user, request, via) => this.commands.submit(id, user, request, via),
             standardTurnAdapter: () => this.commands.standardTurnAdapter(),
+            onSchedulesChanged: (channelOrSession) => {
+                this.refreshRuleSchedulesByTarget(channelOrSession);
+            },
             log: (line) => this.#log(line),
         });
         this.channels = this.dialogue.channels;
         this.historySearch = this.dialogue.historySearch;
         this.ruleEngine = this.dialogue.ruleEngine;
         this.turnPipeline = this.dialogue.turnPipeline;
+    }
+
+    /** Push fresh projected schedules to any open room matching `channelOrSession` (channel name or numeric ID). */
+    refreshRuleSchedulesByTarget(channelOrSession: string): void {
+        const clean = channelOrSession.replace(/^#/, "").toLowerCase();
+
+        for (const [roomId, pending] of this.#rooms.entries()) {
+            const roomChannel = this.channels?.get(roomId)?.name.toLowerCase();
+
+            if (String(roomId) === channelOrSession || (roomChannel !== undefined && roomChannel === clean)) {
+                void pending.then(
+                    (room) => room.schedule(),
+                    () => {},
+                );
+            }
+        }
+    }
+
+    /** Push fresh projected schedules to the open room for conversation `id`. */
+    refreshRuleSchedules(id: ConversationId): void {
+        void this.#rooms.get(id)?.then(
+            (room) => room.schedule(),
+            () => {},
+        );
     }
 
     /**

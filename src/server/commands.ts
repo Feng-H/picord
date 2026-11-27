@@ -2573,6 +2573,7 @@ export class Commands {
 
         app.requireSee(user, id);
         await app.requireDriver(id, user);
+
         const zone = optionalText(request.zone, "zone");
         const compactBefore = optionalFlag(request.compactBefore, "compactBefore");
 
@@ -2623,6 +2624,81 @@ export class Commands {
 
         app.requireSee(user, id);
         await app.requireDriver(id, user);
+
+        const ruleId = app.ruleEngine?.ruleIdFromScheduleId(scheduleId);
+
+        if (ruleId !== undefined) {
+            const channelName = app.channels?.get(id)?.name;
+
+            if (!app.ruleEngine.rules.some((r) => r.id === ruleId)) {
+                throw new HttpError(400, "规则已移除");
+            }
+
+            if (!app.ruleEngine.ruleAppliesToSession(ruleId, id, channelName)) {
+                throw new HttpError(404, "No such scheduled message");
+            }
+
+            const hasEvery = request.every !== undefined && request.every !== null;
+            const rawNext = request.next;
+
+            if (rawNext !== undefined && typeof rawNext !== "number") {
+                throw new HttpError(400, "next must be a time in milliseconds");
+            }
+
+            if (rawNext !== undefined && !hasEvery) {
+                throw new HttpError(400, "投影任务由静默规则驱动，请修改静默时长或提示词");
+            }
+
+            let everyMinutes: number | undefined;
+
+            if (hasEvery) {
+                const every = request.every as Record<string, unknown>;
+
+                if (
+                    typeof every !== "object" ||
+                    typeof every.minutes !== "number" ||
+                    every.at !== undefined ||
+                    every.window !== undefined
+                ) {
+                    throw new HttpError(400, "投影任务由静默规则驱动，请修改静默时长或提示词");
+                }
+
+                everyMinutes = Math.round(every.minutes);
+            }
+
+            app.spend.check(user, id);
+            const updatedRule = app.ruleEngine.updateFromScheduleMutation(ruleId, {
+                text: optionalText(request.text, "text"),
+                everyMinutes,
+                next: rawNext,
+                hasEvery,
+            });
+
+            app.refreshRuleSchedules(id);
+            await app.collab.activity(
+                id,
+                user,
+                `updated silence rule “${snippet(updatedRule.title || updatedRule.id, 60)}” (${String(updatedRule.after)})`,
+            );
+
+            const projected = app.ruleEngine
+                .activeSchedulesForSession(id, channelName)
+                .find((item) => item.id === `rule:${ruleId}`);
+
+            return (
+                projected ?? {
+                    id: `rule:${updatedRule.id}`,
+                    text: updatedRule.title || updatedRule.id,
+                    next: Date.now(),
+                    every: { minutes: everyMinutes ?? 60 },
+                    zone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+                    runs: 0,
+                    createdAt: Date.now(),
+                    isRule: true,
+                }
+            ) as unknown as Schedule;
+        }
+
         const zone = optionalText(request.zone, "zone");
         const version = optionalText(request.version, "version");
         const compactBefore = optionalFlag(request.compactBefore, "compactBefore");
@@ -2697,6 +2773,50 @@ export class Commands {
             throw new HttpError(400, "paused must be true or false");
         }
 
+        const ruleId = app.ruleEngine?.ruleIdFromScheduleId(scheduleId);
+
+        if (ruleId !== undefined) {
+            const channelName = app.channels?.get(id)?.name;
+
+            if (!app.ruleEngine.rules.some((r) => r.id === ruleId)) {
+                throw new HttpError(400, "规则已移除");
+            }
+
+            if (!app.ruleEngine.ruleAppliesToSession(ruleId, id, channelName)) {
+                throw new HttpError(404, "No such scheduled message");
+            }
+
+            if (!paused) {
+                app.spend.check(user, id);
+            }
+
+            app.ruleEngine.pauseRule(ruleId, paused, user.id);
+            app.refreshRuleSchedules(id);
+            const rule = app.ruleEngine.rules.find((r) => r.id === ruleId);
+
+            await app.collab.activity(
+                id,
+                user,
+                `${paused ? "paused" : "resumed"} silence rule “${snippet(rule?.title || ruleId, 60)}”`,
+            );
+
+            const projected = app.ruleEngine
+                .activeSchedulesForSession(id, channelName)
+                .find((item) => item.id === `rule:${ruleId}`);
+
+            return (
+                projected ?? {
+                    id: `rule:${ruleId}`,
+                    text: rule?.title || ruleId,
+                    next: Date.now(),
+                    runs: 0,
+                    createdAt: Date.now(),
+                    ...(paused ? { paused: Date.now(), pausedBy: user.id } : {}),
+                    isRule: true,
+                }
+            ) as unknown as Schedule;
+        }
+
         if (!paused) {
             app.spend.check(user, id);
         }
@@ -2719,6 +2839,32 @@ export class Commands {
 
         app.requireSee(user, id);
         await app.requireDriver(id, user);
+
+        const ruleId = app.ruleEngine?.ruleIdFromScheduleId(scheduleId);
+
+        if (ruleId !== undefined) {
+            const channelName = app.channels?.get(id)?.name;
+            const rule = app.ruleEngine.rules.find((r) => r.id === ruleId);
+
+            if (!rule) {
+                throw new HttpError(400, "规则已移除");
+            }
+
+            if (!app.ruleEngine.ruleAppliesToSession(ruleId, id, channelName)) {
+                throw new HttpError(404, "No such scheduled message");
+            }
+
+            app.ruleEngine.cancelRule(ruleId);
+            app.refreshRuleSchedules(id);
+            await app.collab.activity(
+                id,
+                user,
+                `cancelled silence rule “${snippet(rule.title || rule.id, 60)}”`,
+            );
+
+            return;
+        }
+
         const schedule = await app.schedules.cancel(id, scheduleId);
 
         if (schedule === undefined) {

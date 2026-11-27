@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, writeFileSync, appendFileSync, mkdirSync, watch, type FSWatcher } from "node:fs";
 import { basename, dirname, join } from "node:path";
+import { HttpError } from "../errors.ts";
 
 /**
  * Conversation Rule Engine
@@ -62,6 +63,24 @@ export interface RuleRuntimeState {
     cursorEntryId?: number;
     headEntryId?: number;
     lastTaskSubmissionId?: string;
+    paused?: number;
+    pausedBy?: string;
+    version?: number;
+}
+
+export interface ProjectedSessionSchedule {
+    id: string;
+    version: string;
+    text: string;
+    next: number;
+    createdAt: number;
+    every: { minutes: number };
+    repeat: string;
+    zone: string;
+    runs: number;
+    paused?: number;
+    pausedBy?: string;
+    isRule: true;
 }
 
 export interface DispatchedTask {
@@ -359,10 +378,11 @@ export function formatRuleStatus(engine: ConversationRuleEngine, now = Date.now(
         const lastFiredStr = state?.lastFiredAt
             ? new Date(state.lastFiredAt).toLocaleTimeString("sv")
             : "未触发";
+        const statusDisplay = state?.paused !== undefined ? "已暂停" : countdownStr;
 
         return [
             `- **${rule.title || rule.id}** (\`#${rule.channel}\`):`,
-            `  - 倒计时: ${countdownStr}`,
+            `  - 倒计时: ${statusDisplay}`,
             `  - 增量游标: cursor_entry_id = ${String(state?.cursorEntryId ?? 0)}, head_entry_id = ${String(state?.headEntryId ?? 0)}`,
             `  - 最近发言: ${lastActiveStr} | 最近触发: ${lastFiredStr}`,
             rule.action.forwardToChannel
@@ -513,6 +533,26 @@ export class FileRuleEngineStore implements RuleEngineStore {
     }
 }
 
+export function resolveRulesFilePath(dataDir?: string, projectDir?: string): string | undefined {
+    const candidatePaths: string[] = [];
+
+    if (projectDir) {
+        candidatePaths.push(join(projectDir, ".dialogue-session", "rules.json"));
+    }
+
+    if (dataDir) {
+        candidatePaths.push(join(dataDir, "rules.json"));
+    }
+
+    for (const file of candidatePaths) {
+        if (existsSync(file)) {
+            return file;
+        }
+    }
+
+    return candidatePaths[0];
+}
+
 export function loadDefaultRules(dataDir?: string, projectDir?: string): ConversationRule[] {
     const candidatePaths: string[] = [];
 
@@ -542,8 +582,42 @@ export function loadDefaultRules(dataDir?: string, projectDir?: string): Convers
     return [];
 }
 
+/** Extract the ruleId when `scheduleId` identifies an engine-projected rule schedule (`rule:<id>` or `rule-silence-<id>`). */
+export function ruleIdFromScheduleId(scheduleId: string): string | undefined {
+    if (scheduleId.startsWith("rule:")) {
+        const id = scheduleId.slice("rule:".length);
+
+        return id.length > 0 ? id : undefined;
+    }
+
+    if (scheduleId.startsWith("rule-silence-")) {
+        const id = scheduleId.slice("rule-silence-".length);
+
+        return id.length > 0 ? id : undefined;
+    }
+
+    return undefined;
+}
+
+function formatRuleRepeat(minutes: number): string {
+    if (minutes % 1440 === 0) {
+        const days = minutes / 1440;
+
+        return days === 1 ? "every day" : `every ${String(days)} days`;
+    }
+
+    if (minutes % 60 === 0) {
+        const hours = minutes / 60;
+
+        return hours === 1 ? "every hour" : `every ${String(hours)} hours`;
+    }
+
+    return minutes === 1 ? "every minute" : `every ${String(minutes)} minutes`;
+}
+
 export interface ConversationRuleEngineOptions {
     rules?: ConversationRule[];
+    rulesFile?: string;
     store?: RuleEngineStore;
     onDispatch?: (task: DispatchedTask) => Promise<void> | void;
     onEvent?: (event: EngineEvent) => Promise<void> | void;
@@ -551,6 +625,7 @@ export interface ConversationRuleEngineOptions {
 
 export class ConversationRuleEngine {
     #rules: ConversationRule[];
+    readonly #rulesFile?: string;
     readonly #store: RuleEngineStore;
     readonly #onDispatch?: (task: DispatchedTask) => Promise<void> | void;
     readonly #onEvent?: (event: EngineEvent) => Promise<void> | void;
@@ -558,6 +633,7 @@ export class ConversationRuleEngine {
 
     constructor(options: ConversationRuleEngineOptions = {}) {
         this.#rules = [...(options.rules ?? [])];
+        this.#rulesFile = options.rulesFile;
         this.#store = options.store ?? new InMemoryRuleEngineStore();
         this.#onDispatch = options.onDispatch;
         this.#onEvent = options.onEvent;
@@ -752,6 +828,10 @@ export class ConversationRuleEngine {
             this.#states.set(rule.id, current);
             this.#store.saveState(rule.id, current);
 
+            if (current.paused !== undefined) {
+                continue;
+            }
+
             const afterMs = parseDuration(rule.after);
             const next = timestamp + afterMs;
 
@@ -809,7 +889,7 @@ export class ConversationRuleEngine {
         for (const rule of this.#rules) {
             const state = this.getState(rule.id);
 
-            if (!state || state.lastActivity === undefined) {
+            if (!state || state.lastActivity === undefined || state.paused !== undefined) {
                 continue;
             }
 
@@ -859,6 +939,225 @@ export class ConversationRuleEngine {
         return dispatched;
     }
 
+    /** Extract the ruleId when `scheduleId` identifies a projected engine schedule. */
+    ruleIdFromScheduleId(scheduleId: string): string | undefined {
+        return ruleIdFromScheduleId(scheduleId);
+    }
+
+    /** Whether `ruleId` belongs to a rule matching `sessionId` or `channelName`. */
+    ruleAppliesToSession(
+        ruleId: string,
+        sessionId: number | string,
+        channelName?: string,
+    ): boolean {
+        const rule = this.#rules.find((r) => r.id === ruleId);
+
+        if (!rule) {
+            return false;
+        }
+
+        const ruleTarget = rule.channel.replace(/^#/, "").toLowerCase();
+        const cleanChannel = channelName?.replace(/^#/, "").toLowerCase();
+
+        return (
+            (cleanChannel !== undefined && ruleTarget === cleanChannel) ||
+            rule.channel === String(sessionId)
+        );
+    }
+
+    /**
+     * Map an edited schedule back to its source rule in `rules.json` and hot-reload.
+     * - `text` updates `action.instruction` (unless unchanged from display `title`)
+     * - `everyMinutes` updates `after` (e.g. `120m`)
+     * - `next` without `every` is incompatible with silence triggers and throws 400.
+     */
+    updateFromScheduleMutation(
+        ruleId: string,
+        mutation: { text?: string; everyMinutes?: number; next?: number; hasEvery?: boolean },
+    ): ConversationRule {
+        const existing = this.#rules.find((r) => r.id === ruleId);
+
+        if (!existing) {
+            throw new HttpError(400, "规则已移除");
+        }
+
+        if (mutation.next !== undefined && !mutation.hasEvery) {
+            throw new HttpError(400, "投影任务由静默规则驱动，请修改静默时长或提示词");
+        }
+
+        if (
+            mutation.everyMinutes !== undefined &&
+            (!Number.isInteger(mutation.everyMinutes) || mutation.everyMinutes < 1)
+        ) {
+            throw new HttpError(400, "静默时长必须为正整数分钟");
+        }
+
+        let updatedRule: ConversationRule | undefined;
+
+        this.#mutateRulesFile((list) => {
+            const index = list.findIndex((r) => r.id === ruleId);
+
+            if (index === -1) {
+                throw new HttpError(400, "规则已移除");
+            }
+
+            const target = list[index]!;
+            const nextAfter =
+                mutation.everyMinutes !== undefined
+                    ? `${String(mutation.everyMinutes)}m`
+                    : target.after;
+            const trimmedText = mutation.text?.trim();
+            const isUnchangedDisplayTitle =
+                trimmedText !== undefined &&
+                (trimmedText === (target.title ?? "").trim() ||
+                    (!target.title && trimmedText === target.id));
+            const nextInstruction =
+                trimmedText && !isUnchangedDisplayTitle ? trimmedText : target.action.instruction;
+
+            updatedRule = {
+                ...target,
+                after: nextAfter,
+                action: {
+                    ...target.action,
+                    instruction: nextInstruction,
+                },
+            };
+
+            const nextList = [...list];
+
+            nextList[index] = updatedRule;
+
+            return nextList;
+        });
+
+        const state = this.getState(ruleId) ?? {};
+
+        state.version = (state.version ?? 1) + 1;
+        this.#states.set(ruleId, state);
+        void this.#store.saveState(ruleId, state);
+
+        return updatedRule!;
+    }
+
+    /** Pause or resume a projected rule schedule persistently in `rule-states.json`. */
+    pauseRule(ruleId: string, paused: boolean, pausedBy?: string, now = Date.now()): void {
+        const rule = this.#rules.find((r) => r.id === ruleId);
+
+        if (!rule) {
+            throw new HttpError(400, "规则已移除");
+        }
+
+        const state = this.getState(ruleId) ?? {};
+        const wasPaused = state.paused !== undefined;
+
+        if (paused) {
+            if (!wasPaused) {
+                state.paused = now;
+                state.pausedBy = pausedBy;
+            }
+        } else {
+            delete state.paused;
+            delete state.pausedBy;
+
+            const afterMs = parseDuration(rule.after);
+
+            if (state.lastActivity === undefined || state.lastActivity + afterMs <= now) {
+                state.lastActivity = now;
+            }
+        }
+
+        state.version = (state.version ?? 1) + 1;
+        this.#states.set(ruleId, state);
+        void this.#store.saveState(ruleId, state);
+
+        if (wasPaused !== paused) {
+            this.emitEvent({
+                timestamp: now,
+                type: "schedule_projected",
+                ruleId: rule.id,
+                channel: rule.channel,
+                details: {
+                    title: rule.title || rule.id,
+                    paused,
+                    scheduleId: `rule-silence-${rule.id}`,
+                },
+            });
+        }
+    }
+
+    /** Cancel a projected rule schedule by removing its rule from `rules.json` and hot-reloading. */
+    cancelRule(ruleId: string): void {
+        const existing = this.#rules.find((r) => r.id === ruleId);
+
+        if (!existing) {
+            throw new HttpError(400, "规则已移除");
+        }
+
+        this.#mutateRulesFile((list) => {
+            const index = list.findIndex((r) => r.id === ruleId);
+
+            if (index === -1) {
+                throw new HttpError(400, "规则已移除");
+            }
+
+            return list.filter((r) => r.id !== ruleId);
+        });
+    }
+
+    #mutateRulesFile(transform: (list: ConversationRule[]) => ConversationRule[]): void {
+        const file = this.#rulesFile;
+
+        if (!file) {
+            throw new HttpError(500, "未配置规则文件 (rules.json)");
+        }
+
+        let raw: unknown;
+
+        try {
+            raw = JSON.parse(readFileSync(file, "utf8")) as unknown;
+        } catch (error) {
+            if (error instanceof HttpError) {
+                throw error;
+            }
+
+            throw new HttpError(
+                500,
+                `读取规则文件失败: ${error instanceof Error ? error.message : String(error)}`,
+            );
+        }
+
+        const wrapped =
+            !Array.isArray(raw) &&
+            raw !== null &&
+            typeof raw === "object" &&
+            Array.isArray((raw as { rules?: unknown }).rules);
+        const list = wrapped
+            ? ((raw as { rules: ConversationRule[] }).rules)
+            : Array.isArray(raw)
+              ? (raw as ConversationRule[])
+              : undefined;
+
+        if (!list) {
+            throw new HttpError(500, "规则文件格式无效，无法写回");
+        }
+
+        const nextList = transform(list);
+        const payload = wrapped
+            ? { ...(raw as Record<string, unknown>), rules: nextList }
+            : nextList;
+
+        try {
+            writeFileSync(file, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+        } catch (error) {
+            throw new HttpError(
+                500,
+                `写入规则文件失败: ${error instanceof Error ? error.message : String(error)}`,
+            );
+        }
+
+        this.reloadRules(nextList);
+    }
+
     /**
      * Project active silence triggers for a specific session ID or channel name.
      * Matches either rule.channel === channelName (case-insensitive) OR rule.channel === String(sessionId).
@@ -867,24 +1166,11 @@ export class ConversationRuleEngine {
         sessionId: number | string,
         channelName?: string,
         now = Date.now(),
-    ): Array<{
-        id: string;
-        version: string;
-        text: string;
-        next: number;
-        createdAt: number;
-        isRule: boolean;
-    }> {
+    ): ProjectedSessionSchedule[] {
         const cleanChannel = channelName?.replace(/^#/, "").toLowerCase();
         const strId = String(sessionId);
-        const results: Array<{
-            id: string;
-            version: string;
-            text: string;
-            next: number;
-            createdAt: number;
-            isRule: boolean;
-        }> = [];
+        const zone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+        const results: ProjectedSessionSchedule[] = [];
 
         for (const rule of this.#rules) {
             const ruleTarget = rule.channel.replace(/^#/, "").toLowerCase();
@@ -897,26 +1183,40 @@ export class ConversationRuleEngine {
 
             const state = this.getState(rule.id);
 
-            if (!state || state.lastActivity === undefined) {
+            if (!state) {
                 continue;
             }
 
+            const isPaused = state.paused !== undefined;
             const notYetFired =
-                state.lastFiredAt === undefined || state.lastFiredAt < state.lastActivity;
+                state.lastActivity !== undefined &&
+                (state.lastFiredAt === undefined || state.lastFiredAt < state.lastActivity);
 
-            if (!notYetFired) {
+            if (!isPaused && !notYetFired) {
                 continue;
             }
 
             const afterMs = parseDuration(rule.after);
-            const next = state.lastActivity + afterMs;
+            const minutes = Math.max(1, Math.round(afterMs / 60_000));
+            const createdAt = state.lastActivity ?? state.paused ?? now;
+            const next = createdAt + afterMs;
 
             results.push({
                 id: `rule:${rule.id}`,
-                version: "1",
+                version: String(state.version ?? 1),
                 text: rule.title || rule.id,
                 next,
-                createdAt: state.lastActivity,
+                createdAt,
+                every: { minutes },
+                repeat: formatRuleRepeat(minutes),
+                zone,
+                runs: 0,
+                ...(isPaused
+                    ? {
+                          paused: state.paused,
+                          ...(state.pausedBy === undefined ? {} : { pausedBy: state.pausedBy }),
+                      }
+                    : {}),
                 isRule: true,
             });
         }

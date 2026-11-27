@@ -93,6 +93,7 @@ export function openApp(
     return PocketApp.open({
         dataDir,
         defaultCwd: work,
+        workspaceDir: work,
         supervised: false,
         log: () => {},
         configureModels: (models) => models.registerNativeProvider(model.provider),
