@@ -51,6 +51,9 @@
 8. **项目级 skill 在 `.agents/skills/`**（mattpocock/skills 全集 39 个，随仓库走，两台机器
    git 同步即得）。Pi/T3 自动发现；其他 agent 不自动识别时，直接读对应目录的
    `SKILL.md`。来源与更新方式见 `.agents/skills/README.md`。
+9. **本项目只用项目级 skill**：两台机器的用户级通用 skill 与扩展已于 2026-11-28
+   备份移除（`*.bak-20261128`），不要恢复它们，也不要往用户目录装新 skill；
+   VPS 侧工作区根的 `.agents/skills` 是指向本仓库的符号链接，勿改为实体目录。
 
 ## 五、进行中 / 待办(交接时快照)
 
