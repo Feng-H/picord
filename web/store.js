@@ -418,6 +418,7 @@ export const store = {
                     id: each.id,
                     name,
                     title: name,
+                    ownerName: each.ownerName,
                     cwd: each.cwd,
                     archived: each.archived === true,
                     session: each,
@@ -2732,6 +2733,8 @@ export const actions = {
             ...(channel ? { channel: true } : {}),
         }),
     updateSession: (id, patch) => api(`sessions/${id}`, patch),
+    setSessionMembers: (id, members) => api(`c/${id}/members`, { members }),
+    leaveSession: (id) => api(`c/${id}/leave`, {}),
     upload: (file) => api(`c/${current()}/upload?name=${encodeURIComponent(file.name)}`, file),
     fullEntry: (entryId) => api(`c/${current()}/entry/${entryId}`),
     /** Show a path in the server machine's file manager: the owner's only. */

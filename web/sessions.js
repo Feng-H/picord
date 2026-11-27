@@ -831,7 +831,8 @@ function SessionRow({
     const [pressing, setPressing] = useState(false);
     const channel = session.channel === true;
     const cleanTitle = (session.title ?? "").replace(/^#/, "");
-    const title = channel ? `#${cleanTitle}` : (session.title ?? t("New session"));
+    const ownerTag = session.ownerName ? ` · ${session.ownerName}` : "";
+    const title = `${channel ? `#${cleanTitle}` : (session.title ?? t("New session"))}${ownerTag}`;
     const path = shortPath(session.cwd, home);
     const where = [
         session.worktree ? `${path} ⎇ ${session.worktree.branch}` : path,
@@ -924,8 +925,9 @@ function SessionRow({
                 ${
                     hit
                         ? html`<span class="session-name">${channel ? (session.title ?? "") : title}</span>
+                            ${session.ownerName ? html`<span class="muted small"> · ${session.ownerName}</span>` : ""}
                             <span class="session-hit">${withMark(hit, needle)}</span>`
-                        : withMark(channel ? (session.title ?? "") : title, needle)
+                        : html`${withMark(channel ? (session.title ?? "") : (session.title ?? t("New session")), needle)}${session.ownerName ? html`<span class="muted small"> · ${session.ownerName}</span>` : ""}`
                 }
             </span>
             <span class="session-side">
@@ -2400,10 +2402,13 @@ function AllSessions({ compact = false }) {
                                     return;
                                 }
 
-                                // One of a name: a second channel called the same would split its talk in two.
+                                // Only block duplicates within the creator's own unshared private channels; groups allow duplicate names.
                                 const cleanSaid = said.trim().toLowerCase();
                                 const clash = store.channels.find(
-                                    (each) => each.name === cleanSaid,
+                                    (each) =>
+                                        each.name === cleanSaid &&
+                                        each.session?.isGroup !== true &&
+                                        !each.session?.ownerName,
                                 );
 
                                 if (clash !== undefined) {

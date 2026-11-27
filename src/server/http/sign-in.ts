@@ -337,6 +337,10 @@ export async function register(
         );
     }
 
+    if (redeemed.user.sessions?.[0] !== undefined) {
+        await app.enrollMember(conversationId(redeemed.user.sessions[0]), redeemed.user.id);
+    }
+
     const tunnel = quickTunnelHost(request);
 
     if (tunnel !== undefined && redeemed.user.role !== "owner") {
@@ -371,6 +375,10 @@ export async function join(
                 page("Picord", "<h1>Invite expired</h1><p>Ask for a new one.</p>"),
                 "text/html; charset=utf-8",
             );
+        }
+
+        if (redeemed.user.sessions?.[0] !== undefined) {
+            await app.enrollMember(conversationId(redeemed.user.sessions[0]), redeemed.user.id);
         }
 
         const tunnel = quickTunnelHost(request);

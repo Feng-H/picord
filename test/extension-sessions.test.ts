@@ -119,7 +119,10 @@ test("a repeat returns the first session, as the first person, though a check no
 
     await until(async () => (await told(session, "only once")).length > 0, "the first");
     // Someone else is now the person Pi works for there, and the source is past its spend limit.
-    await writes(id, app.config.addUser("Later", "guest").user, "mine now");
+    const later = app.config.addUser("Later", "guest").user;
+
+    await app.enrollMember(id, later.id);
+    await writes(id, later, "mine now");
     await recordCost(app, id, 0.02);
     await until(() => app.spend.sessionSpent(id) === 0.02, "the spend");
     await app.spend.setSessionBudget(owner(app), id, 0.01);
@@ -133,6 +136,8 @@ test("two starts at once with the same key make one session and send its message
     const count = app.sessions().length;
     const request = { title: "Raced", cwd: work, message: "once between them" };
     const other = app.config.addUser("Racer", "guest").user;
+
+    await app.enrollMember(id, other.id);
     const requesterOf = app.attribution.requesterOf.bind(app.attribution);
     let reads = 0;
 
@@ -189,6 +194,7 @@ test("a source past its spend limit, an invited person, and a PiP source are ref
     const count = app.sessions().length;
     const invited = app.config.addUser("Invited", "guest", [String(id)]).user;
 
+    await app.enrollMember(id, invited.id);
     await writes(id, invited, "mine");
     await assert.rejects(
         app.extensionSessions.start(id, { title: "No" }, "invited"),

@@ -445,6 +445,31 @@ export function MenuSheet({ places = true }) {
                 )
             }
             ${session && steer && item(t("Rename"), () => openSheet({ type: "rename" }))}
+            ${(() => {
+                const listed =
+                    session && store.state.sessions.find((each) => each.id === conversation.id);
+
+                if (listed?.canManageMembers) {
+                    return item(
+                        t(listed.isGroup ? "Group members" : "Share"),
+                        () => openSheet({ type: "session-share", session: conversation.id }),
+                        listed.isGroup
+                            ? `${(listed.memberIds?.length ?? 0) + 1} people`
+                            : t("add people or invite"),
+                    );
+                }
+
+                if (listed?.canLeave) {
+                    return item(t("Leave group"), () => {
+                        closeSheet();
+                        attempt(() => actions.leaveSession(conversation.id)).then(() =>
+                            navigate(null),
+                        );
+                    });
+                }
+
+                return null;
+            })()}
             ${
                 session &&
                 item(

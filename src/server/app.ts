@@ -106,6 +106,14 @@ import type { ChannelManager } from "./channels.ts";
 import { DialogueRuntime } from "./dialogue-runtime.ts";
 import type { HistorySearchEngine } from "./history-search.ts";
 import { isThinkingLevel, modelInfo, modelList, resolveModel, THINKING_LEVELS } from "./models.ts";
+import {
+    attributionForViewer,
+    canLeaveSession,
+    canManageSessionMembers,
+    canSeeSession,
+    isSessionOwner,
+    normalizeMemberIds,
+} from "./session-access.ts";
 import { Updates } from "./updates.ts";
 import { pocketPackage, pocketVersion } from "./versions.ts";
 import { serverBuild } from "./build.ts";
@@ -715,11 +723,16 @@ export class PocketApp {
                     channel: meta.channel,
                     archived: meta.archived,
                     createdBy: meta.createdBy,
+                    members: meta.members,
+                    pip: meta.pip,
                     cwd: meta.cwd,
                 })),
             sessionMeta: (id) => this.sessionMeta(id),
             createChannelSession: (user, options) => this.commands.createSession(user, options),
             userById: (id) => this.config.userById(id),
+            listUsers: () => this.config.users,
+            isRemovedSession: (id) =>
+                this.#removed.has(String(this.rootOf(id as unknown as ConversationId))),
             fallbackUser: () => this.config.users[0],
             requireSee: (user, id) => this.requireSee(user, id),
             requireSteer: (user) => this.requireSteer(user),
@@ -1504,6 +1517,22 @@ export class PocketApp {
             };
             sessionsChanged = true;
             this.#sessionEvents(before, this.#sessions);
+
+            for (const client of [...this.#clients]) {
+                if (
+                    client.conversationId !== undefined &&
+                    !this.canSee(client.user, client.conversationId)
+                ) {
+                    this.#evict(client, "This session is no longer shared with you.");
+                }
+
+                for (const peek of client.peeks ?? []) {
+                    if (!this.canSee(client.user, peek)) {
+                        client.peeks?.delete(peek);
+                        this.#unpeek(client, peek);
+                    }
+                }
+            }
 
             // Views show a session's title, limit, and worktree from here.
             for (const pending of this.#rooms.values()) {
@@ -2439,23 +2468,46 @@ export class PocketApp {
         const scope = viewer.sessions;
 
         return this.config.users
-            .filter(
-                (each) =>
-                    scope === undefined ||
-                    each.sessions === undefined ||
-                    each.sessions.some((id) => scope.includes(id)),
-            )
-            .map((each) => ({
-                id: each.id,
-                name: each.name,
-                role: each.role,
-                ...(each.avatar === undefined ? {} : { avatar: each.avatar }),
-                online: this.#online(each.id),
-                ...(each.lastSeen === undefined ? {} : { lastSeen: each.lastSeen }),
-                ...(each.sessions === undefined || scope !== undefined
-                    ? {}
-                    : { sessions: each.sessions.map(Number) }),
-            }));
+            .filter((each) => {
+                if (scope !== undefined) {
+                    return scope.some((id) => {
+                        const meta = this.#sessions[id];
+
+                        return (
+                            canSeeSession(each, id, meta) ||
+                            (each.sessions === undefined && meta !== undefined && isSessionOwner(each, meta))
+                        );
+                    });
+                }
+
+                if (each.sessions === undefined) {
+                    return true;
+                }
+
+                return each.sessions.some((id) =>
+                    this.canSee(viewer, Number(id) as unknown as ConversationId),
+                );
+            })
+            .map((each) => {
+                const visibleSessions =
+                    scope === undefined && each.sessions !== undefined
+                        ? each.sessions
+                              .filter((id) =>
+                                  this.canSee(viewer, Number(id) as unknown as ConversationId),
+                              )
+                              .map(Number)
+                        : undefined;
+
+                return {
+                    id: each.id,
+                    name: each.name,
+                    role: each.role,
+                    ...(each.avatar === undefined ? {} : { avatar: each.avatar }),
+                    online: this.#online(each.id),
+                    ...(each.lastSeen === undefined ? {} : { lastSeen: each.lastSeen }),
+                    ...(visibleSessions === undefined ? {} : { sessions: visibleSessions }),
+                };
+            });
     }
 
     // ─── Access ─────────────────────────────────────────────────────────────
@@ -2498,18 +2550,49 @@ export class PocketApp {
      */
     canSee(user: User, id: ConversationId): boolean {
         const root = this.rootOf(id);
+        const removed = this.#removed.has(String(root)) || this.#removed.has(String(id));
 
-        if (this.#removed.has(String(root)) || this.#removed.has(String(id))) {
-            return false;
+        return canSeeSession(user, root, this.#sessions[String(root)], removed);
+    }
+
+    canManageMembers(user: User, id: ConversationId): boolean {
+        const root = this.rootOf(id);
+
+        return canManageSessionMembers(user, this.#sessions[String(root)]);
+    }
+
+    canLeave(user: User, id: ConversationId): boolean {
+        const root = this.rootOf(id);
+
+        return canLeaveSession(user, this.#sessions[String(root)]);
+    }
+
+    async enrollMember(id: ConversationId, userId: string): Promise<void> {
+        const root = this.rootOf(id);
+        const targetUser = this.config.userById(userId);
+
+        if (targetUser === undefined) {
+            return;
         }
 
-        const pip = this.#sessions[String(root)]?.pip;
+        await this.harness.commit(async (tx) => {
+            const sessions = await tx.doc(SessionsDoc);
+            const meta = sessions.items[String(root)];
 
-        if (pip !== undefined && pip !== user.id) {
-            return false;
-        }
+            if (meta === undefined || meta.pip !== undefined) {
+                return;
+            }
 
-        return user.sessions === undefined || user.sessions.includes(String(root));
+            if (isSessionOwner(targetUser, meta)) {
+                return;
+            }
+
+            const ownerId =
+                meta.createdBy ?? this.config.users.find((each) => each.role === "owner")?.id;
+            const next = normalizeMemberIds(ownerId, [...(meta.members ?? []), userId]);
+
+            meta.members = next;
+        }, context);
     }
 
     requireSee(user: User, id: ConversationId): void {
@@ -2670,7 +2753,7 @@ export class PocketApp {
         const all: SubagentEntry[] = [];
 
         for (const [id, list] of this.#subagentsBySession()) {
-            if (user?.sessions !== undefined && !user.sessions.includes(id)) {
+            if (user !== undefined && !this.canSee(user, Number(id) as unknown as ConversationId)) {
                 continue;
             }
 
@@ -2872,29 +2955,32 @@ export class PocketApp {
 
         this.#sessionsTimer = setTimeout(() => {
             this.#sessionsTimer = undefined;
-            const all = this.sessions();
-            const allJson = JSON.stringify(all);
+            const sentByUser = new Map<
+                string,
+                { list: ReturnType<PocketApp["sessions"]>; json: string }
+            >();
             let board: SubagentEntry[] | undefined;
 
             for (const client of this.#clients) {
-                const scope = client.user.sessions;
+                let cached = sentByUser.get(client.user.id);
 
-                if (scope === undefined) {
-                    this.#sendSessions(client, all, allJson);
-                } else {
-                    // Scoped lists need their own metadata projection, not just a filter over the global list.
-                    this.#sendSessions(client, this.sessions(client.user));
+                if (cached === undefined) {
+                    const list = this.sessions(client.user);
+
+                    cached = { list, json: JSON.stringify(list) };
+                    sentByUser.set(client.user.id, cached);
                 }
 
+                this.#sendSessions(client, cached.list, cached.json);
                 this.#sendPip(client);
 
                 if (client.board === true) {
                     board ??= this.subagents();
                     this.#sendBoard(
                         client,
-                        scope === undefined
-                            ? board
-                            : board.filter((entry) => scope.includes(String(entry.id))),
+                        board.filter((entry) =>
+                            this.canSee(client.user, entry.id as unknown as ConversationId),
+                        ),
                     );
                 }
             }
@@ -2976,7 +3062,8 @@ export class PocketApp {
                 ([id, meta]) =>
                     // PiP is not a session people pick: it shows in its own panel (`pip.ts`).
                     meta.pip === undefined &&
-                    (user?.sessions === undefined || user.sessions.includes(id)),
+                    (user === undefined ||
+                        this.canSee(user, Number(id) as unknown as ConversationId)),
             )
             .map(([id, meta]) => {
                 const model = this.#agents.get(Number(id) as unknown as ConversationId)?.model;
@@ -3008,10 +3095,18 @@ export class PocketApp {
                         : visibleOrigin
                           ? { linkedFrom }
                           : { linkedOrigin: true };
+                const fallbackOwnerId = this.config.users.find((each) => each.role === "owner")?.id;
+                const attribution = attributionForViewer(
+                    meta,
+                    user,
+                    (uid) => this.config.userById(uid)?.name,
+                    fallbackOwnerId,
+                );
 
                 return {
                     id: Number(id),
                     ...shown,
+                    ...attribution,
                     ...linkage,
                     busy,
                     waiting: waiting.has(id),
@@ -3040,7 +3135,13 @@ export class PocketApp {
         scope?: string,
         limit?: number,
     ): Promise<string> {
-        const result = await this.historySearch.search(Number(conversationId), query, scope, limit);
+        const result = await this.historySearch.search(
+            Number(conversationId),
+            query,
+            scope,
+            limit,
+            (targetId) => this.dialogue.canConversationAccess(Number(conversationId), targetId),
+        );
 
         return result.formatted;
     }

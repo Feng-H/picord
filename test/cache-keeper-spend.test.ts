@@ -56,6 +56,8 @@ test("warm usage counts in the session and captured person's spend, including a 
 
     try {
         id = await newSession(app);
+        await app.enrollMember(id, alex.id);
+        await app.enrollMember(id, bea.id);
 
         await app.commands.submit(id, alex, { text: "work", requestId: crypto.randomUUID() });
         await until(
@@ -172,6 +174,8 @@ test("the keeper sends no warm after its payer reaches a spend limit", async () 
 
     try {
         const id = await newSession(app);
+
+        await app.enrollMember(id, alex.id);
 
         await app.commands.submit(id, alex, { text: "work", requestId: crypto.randomUUID() });
         await until(

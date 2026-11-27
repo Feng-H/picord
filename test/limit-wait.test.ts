@@ -85,7 +85,10 @@ test("a run that hits a limit waits inside its request and answers by itself, wi
     });
 
     // Only someone who may steer sends the request now.
-    await assert.rejects(app.commands.retryLimit(id, app.config.addUser("Vee", "viewer").user), {
+    const viewer = app.config.addUser("Vee", "viewer").user;
+
+    await app.enrollMember(id, viewer.id);
+    await assert.rejects(app.commands.retryLimit(id, viewer), {
         status: 403,
     });
     state.limited = false;

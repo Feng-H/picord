@@ -24,7 +24,7 @@ import { MemorySheet } from "./sheets/memory.js";
 import { MenuSheet, PlacesSheet } from "./sheets/menu.js";
 import { MessageSheet } from "./sheets/message.js";
 import { ModelPicker } from "./sheets/model.js";
-import { InviteSheet, MyPhoto, PeopleSheet } from "./sheets/people.js";
+import { InviteSheet, MyPhoto, PeopleSheet, SessionShareSheet } from "./sheets/people.js";
 import { AuthDialog, ProvidersSheet } from "./sheets/providers.js";
 import { HooksSheet } from "./sheets/hooks.js";
 import { SchedulesSheet } from "./sheets/schedules.js";
@@ -263,6 +263,9 @@ function sheetBody(sheet) {
             break;
         case "invite":
             body = html`<${InviteSheet} session=${sheet.session ?? null} />`;
+            break;
+        case "session-share":
+            body = html`<${SessionShareSheet} session=${sheet.session ?? null} />`;
             break;
         case "people":
             body = html`<${PeopleSheet} />`;

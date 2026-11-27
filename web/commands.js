@@ -190,9 +190,14 @@ async function newChannel(arg) {
         return notify("info", "Say the channel name, such as /channel general.");
     }
 
-    // One of a name: an existing channel opens instead of a second one starting.
+    // Only reuse an existing unshared private channel of your own; groups and others' channels stay separate.
     const cleanName = name.replace(/^#/, "").trim().toLowerCase();
-    const clash = store.channels.find((each) => each.name === cleanName);
+    const clash = store.channels.find(
+        (each) =>
+            each.name === cleanName &&
+            each.session?.isGroup !== true &&
+            !each.session?.ownerName,
+    );
 
     if (clash !== undefined) {
         navigate(clash.id);

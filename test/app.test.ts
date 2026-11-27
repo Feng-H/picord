@@ -757,6 +757,8 @@ test("people chat beside Pi: presence, one post per request, and the chat surviv
     const id = await newSession();
     const guest = app.config.addUser("Alex", "guest");
 
+    await app.enrollMember(id, guest.user.id);
+
     type Event = { event: string; data: Record<string, unknown> };
     const tab = (name: string, user: (typeof guest)["user"], events: Event[]) => ({
         id: name,
@@ -840,6 +842,9 @@ test("viewers read and chat but never steer; people invited to one session see o
     const viewer = app.config.addUser("Vee", "viewer").user;
     const scoped = app.config.addUser("Sam", "guest", [String(id)]).user;
 
+    await app.enrollMember(id, viewer.id);
+    await app.enrollMember(id, scoped.id);
+
     try {
         await assert.rejects(
             app.commands.submit(id, viewer, { text: "hi", requestId: "v1" }),
@@ -895,6 +900,8 @@ test("viewers read and chat but never steer; people invited to one session see o
 test("take turns: only the driver steers, others ask, the driver hands over", async () => {
     const id = await newSession();
     const alex = app.config.addUser("Alex", "guest").user;
+
+    await app.enrollMember(id, alex.id);
     const ownerTab = fakeTab(id, owner());
     const alexTab = fakeTab(id, alex);
 
@@ -1501,6 +1508,8 @@ test("a tab switches session on the connection it has: the new one comes, and no
 
     // Not this person's: the switch goes through, and the session is missing.
     const guest = app.config.addUser("Rex", "guest", [String(first)]);
+
+    await app.enrollMember(first, guest.user.id);
     const theirs = fakeTab(first, guest.user, 6);
 
     try {
@@ -1580,6 +1589,10 @@ test("a session no longer shared while its room opens sends nothing of it, on a 
         String(second),
         String(third),
     ]);
+
+    await app.enrollMember(first, guest.user.id);
+    await app.enrollMember(second, guest.user.id);
+    await app.enrollMember(third, guest.user.id);
 
     try {
         // A new connection to it.
@@ -1738,6 +1751,8 @@ test("a composer Interrupt delivers several queued messages after its answer, in
 test("a composer Interrupt keeps everyone's queued modes, files, images and entries", async () => {
     const id = await newSession();
     const guest = app.config.addUser("Alex", "guest").user;
+
+    await app.enrollMember(id, guest.id);
     const png = Buffer.from(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
         "base64",
@@ -2071,6 +2086,8 @@ test("a held message is withdrawn by its sender or the driver, and edited by its
     const id = await newSession();
     const guest = app.config.addUser("Held guest", "guest").user;
 
+    await app.enrollMember(id, guest.id);
+
     try {
         await app.commands.submit(id, owner(), { text: "stream a long answer", requestId: "hd-1" });
         await until(() => app.isBusy(id), "the run to start");
@@ -2172,6 +2189,8 @@ test("the held messages show in the room, with who wrote them", async () => {
 test("a queued message moves between Queue and Steer, by its sender only", async () => {
     const id = await newSession();
     const guest = app.config.addUser("Alex", "guest").user;
+
+    await app.enrollMember(id, guest.id);
     const mode = async () => (await app.harness.snapshot(InboxDoc, id, context))?.items[0]?.mode;
 
     try {
@@ -2201,6 +2220,8 @@ test("a queued message moves between Queue and Steer, by its sender only", async
 test("a queued message taken back to edit gives its sender its words and files, and leaves the queue", async () => {
     const id = await newSession();
     const guest = app.config.addUser("Sam", "guest").user;
+
+    await app.enrollMember(id, guest.id);
     const path = join(app.workspace.uploadDirectory(id), "lzx-1234abcd-notes (v2).txt");
     const file = { path, name: "notes (v2).txt", mime: "text/plain", size: 3 };
 
@@ -2281,6 +2302,8 @@ async function queued(app: App, id: ConversationId) {
 test("an Interrupt of one queued message leaves the 3 others, from 2 people, queued in order", async () => {
     const id = await newSession();
     const guest = app.config.addUser("Alex", "guest").user;
+
+    await app.enrollMember(id, guest.id);
     const by = [owner().id, guest.id, guest.id];
 
     try {
@@ -2393,6 +2416,8 @@ test("after a restart, a person still moves their own queued message; to Steer o
 
         alex = again.config.addUser("Alex", "guest").user;
         const id = await startSession(again);
+
+        await again.enrollMember(id, alex.id);
 
         await again.commands.submit(id, first, { text: "stream a long answer", requestId: "rs-1" });
         await until(() => again.isBusy(id), "the run to start");
@@ -2576,6 +2601,9 @@ test("notes refuse a stale edit, and a mention reaches the person in another ses
     const id = await newSession();
     const other = await newSession();
     const alex = app.config.addUser("Alex", "guest").user;
+
+    await app.enrollMember(id, alex.id);
+    await app.enrollMember(other, alex.id);
     const elsewhere = fakeTab(other, alex);
 
     try {
@@ -3261,6 +3289,9 @@ test("access holds: a refused tab hears nothing, narrowed access evicts, removal
     const other = await newSession();
     const sam = app.config.addUser("Sam", "guest", [String(id)]).user;
     const vee = app.config.addUser("Vee", "viewer").user;
+
+    await app.enrollMember(id, sam.id);
+    await app.enrollMember(id, vee.id);
     const sneaky = fakeTab(other, sam);
     const samTab = fakeTab(id, sam);
     const veeTab = fakeTab(id, vee);
@@ -3384,6 +3415,8 @@ test("an extension reads a session's messages a page at a time, as its person ma
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const port = (server.address() as { port: number }).port;
     const elsewhere = app.config.addUser("Sam", "guest", [String(other)]);
+
+    await app.enrollMember(other, elsewhere.user.id);
     const call = (token: string, query: string, session = id) =>
         fetch(`http://127.0.0.1:${port}/api/c/${session}/messages${query}`, {
             headers: { authorization: `Bearer ${token}` },
@@ -3454,6 +3487,8 @@ test("only the owner may show a path in the server's file manager, and only one 
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const port = (server.address() as { port: number }).port;
     const guest = app.config.addUser("Gil", "guest");
+
+    await app.enrollMember(id, guest.user.id);
     const call = (token: string, body: unknown) =>
         fetch(`http://127.0.0.1:${port}/api/c/${id}/reveal`, {
             method: "POST",

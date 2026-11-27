@@ -214,6 +214,7 @@ test("a session in plan mode is told so, cannot write, still reads, and approvin
     assert.equal((await app.harness.snapshot(PlanDoc, id, context))?.on, false);
     const viewer = app.config.addUser("Vee", "viewer").user;
 
+    await app.enrollMember(id, viewer.id);
     await assert.rejects(app.commands.setPlan(id, viewer, true), { status: 403 });
 });
 

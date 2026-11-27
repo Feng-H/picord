@@ -298,6 +298,7 @@ test("a guest's lesson waits for the owner, and is used once approved", async ()
     const guest = app.config.addUser("Gina", "guest").user;
     const id = await newSession(app, repo);
 
+    await app.enrollMember(id, guest.id);
     await sayAs(guest, id, "remember Always-deploy-to-moon.");
     assert.match(await answer(id), /waits for the owner's approval/);
     const [lesson] = await lessons();
@@ -308,6 +309,8 @@ test("a guest's lesson waits for the owner, and is used once approved", async ()
 
     // The guest sees their own; the owner sees it to approve; another guest does not see it.
     const other = app.config.addUser("Otto", "guest").user;
+
+    await app.enrollMember(id, other.id);
 
     assert.equal((await app.memory.view(id, guest)).lessons.length, 1);
     assert.equal((await app.memory.view(id, other)).lessons.length, 0);
@@ -369,6 +372,8 @@ test("Pi's list shows what is in force, and what waits only for whom it works fo
     await clear();
     const id = await newSession(app, repo);
     const guest = app.config.addUser("Quinn", "guest").user;
+
+    await app.enrollMember(id, guest.id);
 
     await app.memory.add(
         id,
@@ -684,6 +689,9 @@ test("the routes: viewers read, guests add (pending) and cannot remove the owner
         });
     const id = await newSession(app, repo);
     const ownerToken = app.config.ownerToken;
+
+    await app.enrollMember(id, viewer.user.id);
+    await app.enrollMember(id, guest.user.id);
 
     try {
         const added = await call(ownerToken, `c/${id}/memory`, { text: "Owner's rule." });

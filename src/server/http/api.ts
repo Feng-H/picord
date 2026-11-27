@@ -98,6 +98,10 @@ export function createApi(options: HttpOptions, auth: Auth) {
             throw new HttpError(400, "No such session");
         }
 
+        if (!app.canManageMembers(user, session)) {
+            throw new HttpError(403, "Only the creator can invite people to this session.");
+        }
+
         return { role, session: String(session) };
     };
 
@@ -207,7 +211,13 @@ export function createApi(options: HttpOptions, auth: Auth) {
                 ? Number(url.searchParams.get("session"))
                 : 0;
 
-            const result = await app.historySearch.search(session, q, scope, limit);
+            const result = await app.historySearch.search(
+                session,
+                q,
+                scope,
+                limit,
+                (targetId) => app.canSee(user, conversationId(String(targetId))),
+            );
             const filteredMatches = result.matches.filter((m) =>
                 app.canSee(user, conversationId(String(m.sessionId))),
             );

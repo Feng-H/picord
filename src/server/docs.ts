@@ -44,6 +44,8 @@ export type SessionMeta = {
     createdAt: number;
     updatedAt: number;
     createdBy?: string;
+    /** Users explicitly added to this conversation, turning it into a shared group. */
+    members?: string[];
     archived?: boolean;
     /** A Discord-style channel: a long-lived conversation in the sidebar's channels section, open to schedules and webhooks. */
     channel?: true;

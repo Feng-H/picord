@@ -447,3 +447,97 @@ export function PeopleSheet() {
         </button>
     <//>`;
 }
+
+/** Creator-only member selector for promoting a private session/channel into a shared group. */
+export function SessionShareSheet({ session = null }) {
+    const { me, users, sessions, view } = store.state;
+    const targetId = session ?? (view.conversation?.kind === "session" ? view.conversation.id : null);
+    const here = targetId !== null ? (sessions.find((each) => each.id === targetId) ?? null) : null;
+    const [saving, setSaving] = useState(false);
+    const [members, setMembers] = useState(() => [...(here?.memberIds ?? [])]);
+    const memberKey = (here?.memberIds ?? []).join(",");
+
+    useEffect(() => {
+        setMembers([...(here?.memberIds ?? [])]);
+    }, [here?.id, memberKey]);
+
+    const candidates = users.filter(
+        (person) => person.id !== me?.id && person.id !== here?.ownerId && !person.sessions,
+    );
+    const label = here?.channel
+        ? `#${(here.title ?? "").replace(/^#/, "")}`
+        : (here?.title ?? t("New session"));
+    const isGroup = members.length > 0;
+
+    const toggle = (userId) => {
+        if (!here || saving) {
+            return;
+        }
+
+        const next = members.includes(userId)
+            ? members.filter((id) => id !== userId)
+            : [...members, userId];
+
+        setSaving(true);
+        attempt(async () => {
+            const res = await actions.setSessionMembers(here.id, next);
+
+            setMembers(res.members ?? next);
+        }).finally(() => setSaving(false));
+    };
+
+    return html`<${Sheet} title=${`${t("Share")} · ${label}`} onClose=${closeSheet}>
+        <p class="muted small">
+            ${
+                isGroup
+                    ? `Shared group (${members.length + 1} people). Visible only to listed members; duplicate group names are allowed.`
+                    : "Private to you. Adding someone turns this into a shared group."
+            }
+        </p>
+        <div class="group">
+            <div class="group-title">${t("Group members")}</div>
+            ${
+                candidates.length === 0
+                    ? html`<p class="muted small">No other registered accounts on this server yet.</p>`
+                    : html`<div class="sheet-list">
+                        ${candidates.map((person) => {
+                            const checked = members.includes(person.id);
+
+                            return html`<label class="person-row" key=${person.id}>
+                                <span class="people-here">
+                                    <${Avatar} person=${person} size=${32} />
+                                    <span
+                                        class=${`online-mark ${person.online ? "" : "away"}`}
+                                        aria-hidden="true"
+                                    ></span>
+                                </span>
+                                <div class="person-main">
+                                    <div>${person.name}</div>
+                                    <div class="muted small">
+                                        ${person.role === "owner" ? "owner" : person.role === "viewer" ? "view only" : "can steer"} · ${lastSeen(person)}
+                                    </div>
+                                </div>
+                                <input
+                                    type="checkbox"
+                                    checked=${checked}
+                                    disabled=${saving}
+                                    onChange=${() => toggle(person.id)}
+                                />
+                            </label>`;
+                        })}
+                    </div>`
+            }
+        </div>
+        ${
+            collab() &&
+            !scoped() &&
+            here &&
+            html`<button
+                class="button wide sheet-footer"
+                onClick=${() => openSheet({ type: "invite", session: here.id })}
+            >
+                Create single-session invite link…
+            </button>`
+        }
+    <//>`;
+}

@@ -30,15 +30,17 @@ test("ChannelManager creation and duplicate rejection", async () => {
     assert.equal(channel1.title, "#general");
     assert.equal(channel1.createdBy, "user-1");
 
-    // Duplicate rejection (case-insensitive and with #)
+    // Duplicate rejection for same user's own unshared private channel
     await assert.rejects(
         () => manager.create("#General", "user-1"),
         /A channel called #general is already here/,
     );
-    await assert.rejects(
-        () => manager.create("general", "user-2"),
-        /A channel called #general is already here/,
-    );
+
+    // Another user CAN independently create their own private #general
+    const user2General = await manager.create("general", "user-2");
+
+    assert.equal(user2General.name, "general");
+    assert.equal(user2General.createdBy, "user-2");
 });
 
 test("ChannelManager retrieval by name or id, and active listing", async () => {

@@ -166,6 +166,10 @@ test("only people who see every session publish or end one, and only for their o
     const viewer = app.config.addUser("Viewer", "viewer").user;
     const scoped = app.config.addUser("Scoped", "guest", [String(id)]).user;
 
+    await app.enrollMember(id, guest.id);
+    await app.enrollMember(id, viewer.id);
+    await app.enrollMember(id, scoped.id);
+
     await assert.rejects(app.shares.create(id, scoped, { id: "demo" }), { status: 403 });
     await assert.rejects(app.shares.create(id, viewer, { id: "demo" }), { status: 403 });
 
@@ -213,6 +217,11 @@ test("only people who may publish see a share's address", async () => {
     const scoped = app.config.addUser("Invited", "guest", [String(id)]);
     const scopedViewer = app.config.addUser("Invited viewer", "viewer", [String(id)]).user;
 
+    await app.enrollMember(id, member.id);
+    await app.enrollMember(id, viewer.id);
+    await app.enrollMember(id, scoped.user.id);
+    await app.enrollMember(id, scopedViewer.id);
+
     assert.deepEqual(
         (await app.shares.list(id, member)).map((each) => each.token),
         [share.token],
@@ -235,6 +244,8 @@ test("a share is ended only through its own session", async () => {
     const other = await publish("<p>there</p>");
     const share = await app.shares.create(id, owner(app), { id: "demo" });
     const member = app.config.addUser("Ender", "guest").user;
+
+    await app.enrollMember(id, member.id);
 
     await assert.rejects(app.shares.revoke(member, other, share.token), { status: 404 });
     await assert.rejects(app.shares.revoke(owner(app), other, share.token), { status: 404 });

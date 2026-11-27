@@ -42,6 +42,13 @@ import {
 import type { PocketApp } from "./app.ts";
 import type { Channel } from "./channels.ts";
 import { normalizeChannelName } from "./channels.ts";
+import {
+    assertPrivateChannelNameAvailable,
+    canLeaveSession,
+    canManageSessionMembers,
+    normalizeMemberIds,
+    ownerIdOfSession,
+} from "./session-access.ts";
 import type { User } from "./config.ts";
 import {
     AuthorsDoc,
@@ -450,18 +457,16 @@ export class Commands {
         const channel = request.channel === true;
         const requested = optionalText(request.cwd, "cwd") ?? app.defaultCwd;
 
-        // One channel of a name: a second would split its conversation in two.
+        // Only enforce channel name uniqueness against this user's own unshared private channels;
+        // shared groups and other users may reuse channel names freely.
         if (channel) {
             if (title === undefined || title.trim() === "") {
                 throw new HttpError(400, "Channel name cannot be empty.");
             }
 
             const name = normalizeChannelName(title);
-            const clash = app.channels.get(name);
 
-            if (clash !== undefined) {
-                throw new HttpError(409, `A channel called #${name} is already here.`);
-            }
+            assertPrivateChannelNameAvailable(user, name, app.sessionCatalogue());
         }
 
         app.requireWorkspaceOwner(user, requested);
@@ -791,11 +796,8 @@ export class Commands {
             }
 
             const name = normalizeChannelName(newTitle);
-            const clash = app.channels.get(name);
 
-            if (clash !== undefined && Number(clash.id) !== Number(id)) {
-                throw new HttpError(409, `A channel called #${name} is already here.`);
-            }
+            assertPrivateChannelNameAvailable(user, name, app.sessionCatalogue(), Number(id));
         }
 
         await app.harness.commit(async (tx) => {
@@ -849,6 +851,107 @@ export class Commands {
                 : 0;
 
         return { repeating };
+    }
+
+    /** Set the explicit member list of a conversation or channel (creator-only). */
+    async setSessionMembers(
+        id: ConversationId,
+        user: User,
+        rawMemberIds: unknown,
+    ): Promise<{ members: string[]; isGroup: boolean }> {
+        const app = this.#app;
+
+        app.requireSee(user, id);
+
+        if (
+            !Array.isArray(rawMemberIds) ||
+            !rawMemberIds.every((each) => typeof each === "string")
+        ) {
+            throw new HttpError(400, "members must be a list of user ids");
+        }
+
+        const before = app.sessionMeta(id);
+
+        if (!canManageSessionMembers(user, before)) {
+            throw new HttpError(
+                403,
+                "Only the creator of this conversation can manage its members.",
+            );
+        }
+
+        for (const memberId of rawMemberIds) {
+            if (memberId.trim() !== "" && app.config.userById(memberId.trim()) === undefined) {
+                throw new HttpError(400, "Unknown user in members list");
+            }
+        }
+
+        const fallbackOwnerId = app.config.users.find((each) => each.role === "owner")?.id;
+        const ownerId = ownerIdOfSession(before!, fallbackOwnerId);
+        const next = normalizeMemberIds(ownerId, rawMemberIds);
+        const prev = before?.members ?? [];
+
+        await app.harness.commit(async (tx) => {
+            const sessions = await tx.doc(SessionsDoc);
+            const meta = sessions.items[String(id)];
+
+            if (meta === undefined) {
+                throw new HttpError(404, "Not a session");
+            }
+
+            if (next.length > 0) {
+                meta.members = next;
+            } else {
+                delete meta.members;
+            }
+        }, context);
+
+        const added = next
+            .filter((memberId) => !prev.includes(memberId))
+            .map((memberId) => app.config.userById(memberId)?.name ?? memberId);
+        const removed = prev
+            .filter((memberId) => !next.includes(memberId))
+            .map((memberId) => app.config.userById(memberId)?.name ?? memberId);
+
+        if (added.length > 0) {
+            await app.collab.activity(id, user, `added ${added.join(", ")} to the group`);
+        }
+
+        if (removed.length > 0) {
+            await app.collab.activity(id, user, `removed ${removed.join(", ")} from the group`);
+        }
+
+        return { members: next, isGroup: next.length > 0 };
+    }
+
+    /** Allow a shared group member to leave the conversation themselves. */
+    async leaveSession(id: ConversationId, user: User): Promise<void> {
+        const app = this.#app;
+
+        app.requireSee(user, id);
+        const before = app.sessionMeta(id);
+
+        if (!canLeaveSession(user, before)) {
+            throw new HttpError(400, "Creators cannot leave their own conversation.");
+        }
+
+        await app.harness.commit(async (tx) => {
+            const sessions = await tx.doc(SessionsDoc);
+            const meta = sessions.items[String(id)];
+
+            if (meta === undefined) {
+                throw new HttpError(404, "Not a session");
+            }
+
+            const remaining = (meta.members ?? []).filter((memberId) => memberId !== user.id);
+
+            if (remaining.length > 0) {
+                meta.members = remaining;
+            } else {
+                delete meta.members;
+            }
+        }, context);
+
+        await app.collab.activity(id, user, "left the group");
     }
 
     /**

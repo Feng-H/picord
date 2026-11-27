@@ -2373,6 +2373,10 @@ export function Composer() {
                                 <${Icon} name="chat" size=${14} class="file-icon" />
                                 <span class="file-name">#${item.title}</span>
                                 ${
+                                    item.ownerName &&
+                                    html`<span class="muted small"> · ${item.ownerName}</span>`
+                                }
+                                ${
                                     item.archived === true &&
                                     html`<span class="command-description channel-archived">
                                         ${t("Archived")}

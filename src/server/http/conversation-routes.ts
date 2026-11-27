@@ -595,6 +595,22 @@ export async function conversationRoutes(
         return json(response, 200, await deleteArtifact(app, id, user, fourth));
     }
 
+    if (third === "members" && fourth === undefined && method === "POST") {
+        const body = await readJson<{ members?: unknown }>(request);
+
+        return json(
+            response,
+            200,
+            await app.commands.setSessionMembers(id, user, body.members),
+        );
+    }
+
+    if (third === "leave" && fourth === undefined && method === "POST") {
+        await app.commands.leaveSession(id, user);
+
+        return json(response, 200, { ok: true });
+    }
+
     // An artifact published to anyone with its address: the shares of this session, and ending one.
     if (third === "shares" && fourth === undefined && method === "GET") {
         // The address others reach this server by, as webhooks give it: a tunnel's, when one is up.

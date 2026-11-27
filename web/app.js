@@ -236,17 +236,28 @@ function Topbar() {
     const { sessions, conversationId } = store.state;
     // The top bar draws with each update of the conversation, as an answer streams: the session list is looked
     // through again only when it changes.
-    const { listed, waiting } = useMemo(
-        () => ({
-            listed: sessions.find((session) => session.id === conversationId)?.title,
-            // Other sessions waiting for an approval, counted on the way back to them.
-            waiting: sessions.filter(
-                (session) => session.waiting && !session.archived && session.id !== conversationId,
-            ).length,
-        }),
+    const { listed, listedOwner, waiting } = useMemo(
+        () => {
+            const currentSession = sessions.find((session) => session.id === conversationId);
+
+            return {
+                listed: currentSession?.title,
+                listedOwner: currentSession?.ownerName,
+                // Other sessions waiting for an approval, counted on the way back to them.
+                waiting: sessions.filter(
+                    (session) =>
+                        session.waiting && !session.archived && session.id !== conversationId,
+                ).length,
+            };
+        },
         [sessions, conversationId],
     );
-    const title = conversation?.title ?? listed ?? (store.state.missing ? "Not found" : "Loading…");
+    const baseTitle =
+        conversation?.title ?? listed ?? (store.state.missing ? "Not found" : "Loading…");
+    const title =
+        listedOwner && conversation?.kind === "session"
+            ? `${baseTitle} · ${listedOwner}`
+            : baseTitle;
     // How far down it reaches: PiP's window on a short wide screen stops below its buttons.
     const edge = useEdge("--topbar-h", (rect) => rect.bottom);
 

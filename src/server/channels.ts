@@ -10,6 +10,8 @@ export interface Channel {
     name: string; // normalized name, e.g. "general"
     title: string; // formatted title, e.g. "#general"
     createdBy: string;
+    members?: readonly string[];
+    isGroup?: boolean;
     cwd?: string;
     archived?: boolean;
 }
@@ -85,13 +87,24 @@ export type ChannelDelivery = (
     },
 ) => Promise<void>;
 
+export type ChannelTargetResolver = (
+    fromId: ConversationId,
+    targetNameOrId: string | ConversationId,
+) => Channel;
+
 export class ChannelManager {
     readonly #store: ChannelStore;
     readonly #delivery?: ChannelDelivery;
+    readonly #resolveTarget?: ChannelTargetResolver;
 
-    constructor(store: ChannelStore, delivery?: ChannelDelivery) {
+    constructor(
+        store: ChannelStore,
+        delivery?: ChannelDelivery,
+        resolveTarget?: ChannelTargetResolver,
+    ) {
         this.#store = store;
         this.#delivery = delivery;
+        this.#resolveTarget = resolveTarget;
     }
 
     /**
@@ -133,11 +146,20 @@ export class ChannelManager {
     }
 
     /**
-     * Creates a new channel. Rejects duplicates case-insensitively.
+     * Creates a new channel. Rejects duplicates only within the creator's own unshared private channels;
+     * shared groups and other users may reuse channel names freely.
      */
     async create(rawName: string, createdBy: string, options?: { cwd?: string }): Promise<Channel> {
         const name = normalizeChannelName(rawName);
-        const existing = this.get(name);
+        const existing = this.#store
+            .list()
+            .find(
+                (c) =>
+                    c.name === name &&
+                    c.createdBy === createdBy &&
+                    !c.isGroup &&
+                    (!c.members || c.members.length === 0),
+            );
 
         if (existing !== undefined) {
             throw new HttpError(409, `A channel called #${name} is already here.`);
@@ -166,7 +188,9 @@ export class ChannelManager {
             throw new HttpError(400, "Say what to post.");
         }
 
-        const target = this.get(targetNameOrId);
+        const target = this.#resolveTarget
+            ? this.#resolveTarget(fromId, targetNameOrId)
+            : this.get(targetNameOrId);
 
         if (target === undefined) {
             const clean =

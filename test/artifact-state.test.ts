@@ -73,6 +73,8 @@ test("a person's state comes back as saved, and each person has their own", asyn
     const id = await sessionWithArtifact();
     const me = app.config.ownerToken;
     const other = app.config.addUser("Riley", "guest");
+
+    await app.enrollMember(id, other.user.id);
     const path = `c/${id}/artifact-state/calc`;
 
     try {
@@ -134,6 +136,9 @@ test("only people who see the session read or save there, viewers too, each thei
     const other = await sessionWithArtifact();
     const viewer = app.config.addUser("Vee", "viewer");
     const elsewhere = app.config.addUser("Sam", "guest", [String(other)]);
+
+    await app.enrollMember(id, viewer.user.id);
+    await app.enrollMember(other, elsewhere.user.id);
     const path = `c/${id}/artifact-state/calc`;
 
     try {

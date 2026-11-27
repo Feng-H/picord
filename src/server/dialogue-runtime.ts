@@ -2,12 +2,19 @@ import { randomUUID } from "node:crypto";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { ConversationId, EntryRecord, SubmissionId } from "@earendil-works/pi-durable";
-import { ChannelManager, type Channel } from "./channels.ts";
+import { ChannelManager, normalizeChannelName, type Channel } from "./channels.ts";
 import type { User } from "./config.ts";
 import { NOTE_ENTRY } from "./entry-format.ts";
 import { HttpError } from "./errors.ts";
 import { entryWords, HistorySearchEngine } from "./history-search.ts";
 import { ownRequest } from "./requests.ts";
+import {
+    canConversationAccessTarget,
+    isGroupSession,
+    resolveChannelTargetForScope,
+    type SessionAccessMeta,
+    type SessionAccessUser,
+} from "./session-access.ts";
 import {
     appendEngineEventLog,
     appendSummarizedMarker,
@@ -37,6 +44,8 @@ export interface DialogueSessionSummary {
     channel?: boolean;
     archived?: boolean;
     createdBy?: string;
+    members?: readonly string[];
+    pip?: string;
     cwd?: string;
 }
 
@@ -53,6 +62,8 @@ export interface DialogueRuntimeHost {
         options: { title: string; channel: true; cwd?: string },
     ): Promise<{ id: ConversationId }>;
     userById(id: string): User | undefined;
+    listUsers?(): readonly SessionAccessUser[];
+    isRemovedSession?(id: number): boolean;
     fallbackUser(): User | undefined;
     requireSee(user: User, id: ConversationId): void;
     requireSteer(user: User): void;
@@ -320,7 +331,10 @@ export class DialogueRuntime {
 
     #toChannel(
         id: ConversationId,
-        meta: Pick<DialogueSessionSummary, "title" | "createdBy" | "cwd" | "archived">,
+        meta: Pick<
+            DialogueSessionSummary,
+            "title" | "createdBy" | "members" | "pip" | "cwd" | "archived"
+        >,
     ): Channel {
         const name = (meta.title ?? "").replace(/^#/, "").trim().toLowerCase();
 
@@ -329,9 +343,53 @@ export class DialogueRuntime {
             name,
             title: `#${name}`,
             createdBy: meta.createdBy ?? "",
+            ...(meta.members === undefined ? {} : { members: meta.members }),
+            isGroup: isGroupSession(meta),
             cwd: meta.cwd,
             archived: meta.archived === true,
         };
+    }
+
+    #sessionMap(): Record<string, SessionAccessMeta> {
+        const map: Record<string, SessionAccessMeta> = {};
+
+        for (const s of this.#host.listSessions()) {
+            map[String(s.id)] = {
+                title: s.title,
+                cwd: s.cwd,
+                createdBy: s.createdBy,
+                ...(s.channel ? { channel: true as const } : {}),
+                archived: s.archived,
+                pip: s.pip,
+                members: s.members,
+            };
+        }
+
+        return map;
+    }
+
+    #knownUsers(): readonly SessionAccessUser[] {
+        if (this.#host.listUsers) {
+            return this.#host.listUsers();
+        }
+
+        const owner = this.#host.fallbackUser();
+
+        return owner ? [owner] : [];
+    }
+
+    /** Check whether a conversation's AI tools may access `targetId` (enforcing group/private boundaries). */
+    canConversationAccess(callerId: number | string, targetId: number | string): boolean {
+        const sessions = this.#sessionMap();
+
+        return canConversationAccessTarget(
+            callerId,
+            sessions[String(callerId)],
+            targetId,
+            sessions[String(targetId)],
+            this.#knownUsers(),
+            this.#host.isRemovedSession?.(Number(targetId)) ?? false,
+        );
     }
 
     #createChannelManager(): ChannelManager {
@@ -371,8 +429,9 @@ export class DialogueRuntime {
                 },
             },
             async (target, options) => {
-                const createdBy = this.#host.sessionMeta(options.fromId)?.createdBy;
-                const user = createdBy ? this.#host.userById(createdBy) : undefined;
+                const callerMeta = this.#host.sessionMeta(options.fromId);
+                const actorId = callerMeta?.createdBy ?? this.#host.fallbackUser()?.id;
+                const user = actorId ? this.#host.userById(actorId) : undefined;
 
                 if (user === undefined) {
                     throw new HttpError(403, "The posting conversation's person is gone.");
@@ -395,6 +454,26 @@ export class DialogueRuntime {
                     { text, requestId: randomUUID() },
                     `channel #${target.name} (${sourceTag})`,
                 );
+            },
+            (fromId, targetNameOrId) => {
+                const sessions = this.#sessionMap();
+                const users = this.#knownUsers();
+                const match = resolveChannelTargetForScope(
+                    Number(fromId),
+                    sessions[String(fromId)],
+                    typeof targetNameOrId === "number" ? targetNameOrId : String(targetNameOrId),
+                    sessions,
+                    users,
+                    normalizeChannelName,
+                    this.#host.isRemovedSession,
+                    this.#host.fallbackUser()?.id,
+                );
+                const targetMeta = sessions[String(match.id)];
+
+                return this.#toChannel(match.id as unknown as ConversationId, {
+                    ...targetMeta,
+                    title: targetMeta?.title ?? `#${match.name}`,
+                });
             },
         );
     }

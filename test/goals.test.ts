@@ -201,6 +201,8 @@ test("a goal needs the right to drive, and Lancet Guard's leave for its check", 
     const id = await sessionIn("rules");
     const viewer = app.config.addUser("Vee", "viewer").user;
 
+    await app.enrollMember(id, viewer.id);
+
     await assert.rejects(app.commands.setGoal(id, viewer, "npm test"), { status: 403 });
     // With the guard on, a check it would ask about cannot run unasked after every answer.
     const enabled = app.loader.enabled;

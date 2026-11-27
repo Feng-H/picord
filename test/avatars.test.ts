@@ -82,6 +82,9 @@ test("a picture is for people who share a session with its owner, and for people
     const sam = app.config.addUser("Sam", "guest", [String(mine)]);
     const eve = app.config.addUser("Eve", "guest", [String(other)]);
 
+    await app.enrollMember(mine, sam.user.id);
+    await app.enrollMember(other, eve.user.id);
+    await app.enrollMember(other, guest.id);
     app.config.updateUser(guest.id, { sessions: [String(other)] });
 
     assert.equal((await call(eve.token, `/api/avatar/${guest.id}`, "GET")).status, 200);

@@ -13,6 +13,7 @@ export interface SessionSummary {
     title?: string;
     channel?: boolean;
     archived?: boolean;
+    ownerName?: string;
 }
 
 export interface SearchMatch {
@@ -107,20 +108,28 @@ export class HistorySearchEngine {
     resolveScope(
         activeSessionId: number,
         scope?: string,
+        filter?: (sessionId: number) => boolean,
     ): { id: number; label: string; channel?: boolean }[] {
         const asked = (scope ?? "current").trim();
         const lower = asked.toLowerCase();
         const targets: { id: number; label: string; channel?: boolean }[] = [];
+        const allowed = (id: number) => filter === undefined || filter(id);
+        const ownerSuffix = (session: SessionSummary) =>
+            session.ownerName ? ` · ${session.ownerName}` : "";
 
         if (lower === "all") {
             for (const session of this.#dataSource.getSessions()) {
+                if (!allowed(session.id)) {
+                    continue;
+                }
+
                 const marks = [session.channel ? "channel" : "", session.archived ? "archived" : ""]
                     .filter(Boolean)
                     .join(", ");
 
                 targets.push({
                     id: session.id,
-                    label: `#${session.title ?? "untitled"}${marks === "" ? "" : ` (${marks})`}`,
+                    label: `#${session.title ?? "untitled"}${ownerSuffix(session)}${marks === "" ? "" : ` (${marks})`}`,
                     channel: session.channel,
                 });
             }
@@ -130,10 +139,10 @@ export class HistorySearchEngine {
 
         if (lower === "channels") {
             for (const session of this.#dataSource.getSessions()) {
-                if (session.channel) {
+                if (session.channel && allowed(session.id)) {
                     targets.push({
                         id: session.id,
-                        label: `#${session.title} (channel)`,
+                        label: `#${session.title}${ownerSuffix(session)} (channel)`,
                         channel: true,
                     });
                 }
@@ -144,10 +153,10 @@ export class HistorySearchEngine {
 
         if (lower === "chats") {
             for (const session of this.#dataSource.getSessions()) {
-                if (!session.channel) {
+                if (!session.channel && allowed(session.id)) {
                     targets.push({
                         id: session.id,
-                        label: `#${session.title ?? "chat"}`,
+                        label: `#${session.title ?? "chat"}${ownerSuffix(session)}`,
                         channel: false,
                     });
                 }
@@ -160,28 +169,32 @@ export class HistorySearchEngine {
             const channelName = normalizeChannelName(asked);
             const found = this.#dataSource
                 .getSessions()
-                .find(
+                .filter(
                     (s) =>
                         s.channel &&
+                        allowed(s.id) &&
                         ((s.title ?? "").toLowerCase() === channelName ||
                             (s.title ?? "").toLowerCase() === `#${channelName}`),
                 );
 
-            if (!found) {
+            if (found.length === 0) {
                 throw new HttpError(404, `Channel "${asked}" not found.`);
             }
 
-            return [
-                {
-                    id: found.id,
-                    label: `#${found.title ?? channelName} (channel)`,
-                    channel: true,
-                },
-            ];
+            return found.map((each) => ({
+                id: each.id,
+                label: `#${each.title ?? channelName}${ownerSuffix(each)} (channel)`,
+                channel: true,
+            }));
         }
 
         if (/^\d+$/.test(lower)) {
             const id = Number(lower);
+
+            if (!allowed(id)) {
+                throw new HttpError(404, `Session ${lower} not found.`);
+            }
+
             const meta = this.#dataSource.getSessionMeta(id);
 
             return [
@@ -210,6 +223,7 @@ export class HistorySearchEngine {
         query: string,
         scope?: string,
         limit?: number,
+        filter?: (sessionId: number) => boolean,
     ): Promise<SearchResult> {
         const needle = query.trim().toLowerCase();
 
@@ -219,7 +233,7 @@ export class HistorySearchEngine {
 
         const cap = Math.max(1, Math.min(Math.round(limit ?? 10), 25));
         const effectiveScope = scope ?? "current";
-        const targets = this.resolveScope(activeSessionId, effectiveScope);
+        const targets = this.resolveScope(activeSessionId, effectiveScope, filter);
 
         let walked = 0;
         const matches: SearchMatch[] = [];

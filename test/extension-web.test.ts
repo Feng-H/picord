@@ -645,6 +645,9 @@ test("bound routes use the clicking actor, keep receipts private, and expose aut
     const id = await newSession(app);
     const gale = app.config.userById(people.Gale!.id)!;
 
+    await app.enrollMember(id, gale.id);
+    await app.enrollMember(id, people.Vic!.id);
+
     await app.commands.submit(id, gale, { text: "hello", requestId: "source-requester" });
     const request = { title: "Human role", message: "a human task", key: "human-start" };
     const start = () =>
@@ -699,7 +702,19 @@ test("bound routes use the clicking actor, keep receipts private, and expose aut
 
     assert.equal(data.conversation.id, Number(id));
     assert.equal(data.conversation.thinkingLevel, "off");
-    assert.ok(data.linked.some((each) => each.conversationId === Number(target)));
+    assert.equal(
+        data.linked.some((each) => each.conversationId === Number(target)),
+        false,
+    );
+
+    const ownerView = await call("owner", `/api/x/workspace/source/${id}`);
+
+    assert.equal(ownerView.status, 200);
+    assert.ok(
+        (ownerView.data as typeof data).linked.some(
+            (each) => each.conversationId === Number(target),
+        ),
+    );
     assert.equal(
         (await call("Vic", `/api/x/workspace/start/${id}`, { method: "POST", body: request }))
             .status,
@@ -754,6 +769,11 @@ async function whileChecking(
     model?: string,
 ) {
     const id = await newSession(app);
+
+    if (who !== "owner" && people[who] !== undefined) {
+        await app.enrollMember(id, people[who]!.id);
+    }
+
     const count = app.sessions().length;
     let release!: () => void;
     let checking = false;

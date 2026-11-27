@@ -92,7 +92,9 @@ test("a person sees only the artifacts of the sessions shared with them, over th
     await publish(shared, { id: "open-one", title: "Open", content: "<p>o</p>" });
     await publish(hidden, { id: "closed-one", title: "Closed", content: "<p>c</p>" });
 
-    const { token } = app.config.addUser("Guest", "guest", [String(shared)]);
+    const { user, token } = app.config.addUser("Guest", "guest", [String(shared)]);
+
+    await app.enrollMember(shared, user.id);
     const response = await fetch(new URL("/api/artifacts", base), {
         headers: { authorization: `Bearer ${token}` },
     });
@@ -140,6 +142,8 @@ test("a share removed while the overview is read takes its entries out", async (
     await publish(shared, { id: "was-shared", title: "Shared", content: "<p>s</p>" });
 
     const { user } = app.config.addUser("Late guest", "guest", [String(shared)]);
+
+    await app.enrollMember(shared, user.id);
     const snapshot = app.harness.snapshot.bind(app.harness) as (...args: unknown[]) => unknown;
 
     app.harness.snapshot = (async (...args: unknown[]) => {

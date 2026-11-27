@@ -72,6 +72,8 @@ test("running now lists a session's run and its tool call, scheduled messages, a
 
     const scoped = app.config.addUser("Sam", "guest", [String(quiet)]).user;
 
+    await app.enrollMember(quiet, scoped.id);
+
     assert.deepEqual(
         (await runningNow(app, scoped)).map((each) => each.id),
         [Number(quiet)],
@@ -132,6 +134,8 @@ test("the running board lists every schedule a person may see, with its next tim
     assert.equal(working.prompt?.text, "wait a bit", "the message its run works on");
 
     const scoped = app.config.addUser("Kim", "guest", [String(quiet)]).user;
+
+    await app.enrollMember(quiet, scoped.id);
     const theirs = await runningBoard(app, scoped);
 
     assert.deepEqual(

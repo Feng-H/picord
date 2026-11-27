@@ -903,6 +903,9 @@ test("webhooks to PiP, and who may make, see, and remove them", async () => {
     const viewer = app.config.users.find((user) => user.role === "viewer")!;
     const session = await newSession(app);
 
+    await app.enrollMember(session, guest.id);
+    await app.enrollMember(session, viewer.id);
+
     assert.deepEqual((await app.commands.hooks(guest)).hooks, [], "a guest sees only their own");
     await assert.rejects(app.commands.removeHook(guest, hook.id), /No such webhook/);
     await assert.rejects(app.commands.addHook(viewer, { target: Number(session), name: "x" }));

@@ -46,11 +46,27 @@ function makeFakeHost(
 
     const sessions = new Map<
         number,
-        { title?: string; channel?: boolean; archived?: boolean; createdBy?: string; cwd?: string }
+        {
+            title?: string;
+            channel?: boolean;
+            archived?: boolean;
+            createdBy?: string;
+            members?: string[];
+            cwd?: string;
+        }
     >([
         [1, { title: "#general", channel: true, createdBy: OWNER_USER.id }],
-        [2, { title: "#digest", channel: true, createdBy: MEMBER_USER.id }],
+        [
+            2,
+            {
+                title: "#digest",
+                channel: true,
+                createdBy: MEMBER_USER.id,
+                members: [OWNER_USER.id],
+            },
+        ],
         [3, { title: "Private DM", channel: false, createdBy: MEMBER_USER.id }],
+        [4, { title: "#member-private", channel: true, createdBy: MEMBER_USER.id }],
     ]);
 
     const entriesByConv = new Map<number, EntryRecord[]>();
@@ -91,6 +107,7 @@ function makeFakeHost(
             return { id };
         },
         userById: (id) => [OWNER_USER, MEMBER_USER].find((u) => u.id === id),
+        listUsers: () => [OWNER_USER, MEMBER_USER],
         fallbackUser: () => OWNER_USER,
         requireSee: () => {},
         requireSteer: () => {},
@@ -278,6 +295,12 @@ test("DialogueRuntime enforces channel permissions, creation, and listing", asyn
         assert.equal(Number(turnsSubmitted[0]!.id), 2);
         assert.equal(turnsSubmitted[0]!.request.text, "[via #general]\nDeployment done");
         assert.equal(turnsSubmitted[0]!.via, "channel #digest (via #general)");
+
+        // Private channel owned by another user is invisible to #general's owner
+        await assert.rejects(
+            () => runtime.channels.post(1 as unknown as ConversationId, "member-private", "Secret"),
+            /No live channel called #member-private is here/,
+        );
 
         allowSee = false;
         await assert.rejects(

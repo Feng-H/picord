@@ -55,6 +55,11 @@ export default (_host, web) => { web.route("GET", "sessions", (request) => reque
         const added = app.config.addUser(name, role, sessions ? [...sessions] : undefined);
 
         people[name] = { token: added.token, id: added.user.id };
+        await app.enrollMember(first, added.user.id);
+
+        if (sessions === undefined) {
+            await app.enrollMember(second, added.user.id);
+        }
     }
 
     people.owner = { token: app.config.ownerToken, id: owner(app).id };

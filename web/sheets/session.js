@@ -78,13 +78,23 @@ function sessionItems(session) {
             },
             starts && { label: t("Fork"), hint: t("up to the last reply"), run: () => fork(id) },
             starts && { label: t("New session in this folder"), run: () => newIn(session.cwd) },
-            starts &&
-                collab() && {
-                    label: t("Share"),
-                    hint: t("invite someone"),
-                    opens: true,
-                    run: () => store.set({ sheet: { type: "invite", session: id } }),
-                },
+            session.canManageMembers && {
+                label: t(session.isGroup ? "Group members" : "Share"),
+                hint: session.isGroup
+                    ? `${(session.memberIds?.length ?? 0) + 1} people`
+                    : t("add people or invite"),
+                opens: true,
+                run: () => store.set({ sheet: { type: "session-share", session: id } }),
+            },
+            session.canLeave && {
+                label: t("Leave group"),
+                run: () =>
+                    attempt(() => actions.leaveSession(id)).then(() => {
+                        if (store.state.conversationId === id) {
+                            navigate(null);
+                        }
+                    }),
+            },
         ],
         [
             !session.archived && {

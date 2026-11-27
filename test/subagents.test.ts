@@ -380,6 +380,9 @@ test("an open board loses the subagents of a session no longer shared, at once",
     await until(() => app.subagents().some((each) => each.name === "kept"), "the first subagent");
     const unshared = await orchestrate({ spawn: ["hidden"], rounds: 0, sleep: 0 });
     const guest = app.config.addUser("Narrowed", "guest");
+
+    await app.enrollMember(shared, guest.user.id);
+    await app.enrollMember(unshared, guest.user.id);
     const tab = fakeTab(undefined, guest.user);
     const names = () =>
         ((tab.last("subagents") ?? []) as unknown as { name: string }[])
