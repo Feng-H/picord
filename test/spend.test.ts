@@ -11,6 +11,7 @@ import {
     owner,
     recordCost,
     scriptedModel,
+    shareSession,
     until,
 } from "./helpers.ts";
 import assert from "node:assert/strict";
@@ -85,6 +86,7 @@ test("a conversation's spend is everything its models and tools cost", () => {
 test("spend goes to whoever asked for the work, once, also when the server stopped before counting it", async () => {
     const id = await newSession(app);
 
+    await shareSession(app, id, alex);
     await sayAs(alex, id, "do something");
     await recordCost(app, id, 1.5);
     await until(() => app.spend.personSpent(alex.id) === 1.5, "Alex's spend to be counted");
@@ -159,6 +161,7 @@ test("spend goes to whoever asked for the work, also when someone else writes be
     const id = await newSession(app);
     const bea = app.config.addUser("Bea", "guest").user;
 
+    await shareSession(app, id, alex, bea);
     await sayAs(alex, id, "do something");
     const before = app.spend.personSpent(alex.id);
 
@@ -171,6 +174,7 @@ test("spend goes to whoever asked for the work, also when someone else writes be
 test("the first start that counts spend per person bills nobody for what was spent before", async () => {
     const id = await newSession(app);
 
+    await shareSession(app, id, alex);
     await sayAs(alex, id, "before the upgrade");
     // As before an upgrade: usage, and no per-person counting yet.
     await app.harness.commit((tx) => tx.retireDoc(SpendDoc), context);
@@ -186,6 +190,7 @@ test("the first start that counts spend per person bills nobody for what was spe
 test("limits refuse new messages, for a session and for a guest, but never for the owner's own spend", async () => {
     const id = await newSession(app);
 
+    await shareSession(app, id, alex);
     await recordCost(app, id, 3);
     await until(() => app.spend.sessionSpent(id) === 3, "the spend to be known");
     await assert.rejects(app.spend.setSessionBudget(alex, id, 1), { status: 403 });

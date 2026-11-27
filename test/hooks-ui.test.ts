@@ -1,4 +1,13 @@
-import { type App, cleanUp, newSession, openApp, root, scriptedModel, until } from "./helpers.ts";
+import {
+    type App,
+    cleanUp,
+    newSession,
+    openApp,
+    root,
+    scriptedModel,
+    shareSession,
+    until,
+} from "./helpers.ts";
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import { mkdtempSync } from "node:fs";
@@ -273,6 +282,8 @@ test("webhook prompt updates enforce ownership and validate the request over HTT
     const guest = app.config.addUser("Maker", "guest");
     const other = app.config.addUser("Other", "guest");
     const viewer = app.config.addUser("Viewer", "viewer");
+
+    await shareSession(app, id, guest.user);
     const created = await request(
         "hooks",
         { target: Number(id), name: "Guest deploys", instructions: "Original", signed: true },

@@ -12,6 +12,7 @@ import {
     root,
     say,
     scriptedModel,
+    shareSession,
     work,
 } from "./helpers.ts";
 import assert from "node:assert/strict";
@@ -544,6 +545,8 @@ test("who may read a card's page: people who see the session, a viewer too, not 
     const invited = app.config.addUser("Ivy", "guest", [String(id)]);
     const viewer = app.config.addUser("Vee", "viewer");
     const elsewhere = app.config.addUser("Sam", "guest", [String(other)]);
+
+    await shareSession(app, id, invited.user, viewer.user);
 
     try {
         assert.equal((await page(invited.token, id, "loan-calc/1")).text, PAGE, "an invite to it");

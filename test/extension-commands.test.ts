@@ -7,6 +7,7 @@ import {
     owner,
     say,
     scriptedModel,
+    shareSession,
     until,
     type App,
 } from "./helpers.ts";
@@ -135,6 +136,7 @@ test("a viewer runs no command, and a global command is the owner's alone", asyn
     const viewer = app.config.addUser("Viewer", "viewer").user;
     const guest = app.config.addUser("Guest", "guest").user;
 
+    await shareSession(app, id, viewer, guest);
     await assert.rejects(app.extensionCommands.run(id, viewer, request("count-here")), {
         status: 403,
     });
@@ -168,6 +170,7 @@ test("a card shows in the transcript, never in Pi's context, and does not change
     const id = await newSession(app);
     const guest = app.config.addUser("Card guest", "guest").user;
 
+    await shareSession(app, id, guest);
     await say(app, id, "Hello");
     assert.equal(
         (await app.extensionCommands.run(id, guest, request("count-here", "card"))).type,

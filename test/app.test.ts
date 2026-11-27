@@ -3090,13 +3090,22 @@ test("the web edge: page policy, local redirects, asked account switches, no cro
     const elsewhere = app.config.addUser("Eve", "guest", [String(other)]);
     const cookie = (response: Response) => response.headers.get("set-cookie") ?? "";
 
+    await app.enrollMember(id, guest.user.id);
+    await app.enrollMember(id, scoped.user.id);
+    await app.enrollMember(other, elsewhere.user.id);
+
     try {
         // The app page allows its own import map by hash and nothing from other sites.
         const html = readFileSync(new URL("../web/index.html", import.meta.url), "utf8");
         const map = /<script type="importmap">([\s\S]*?)<\/script>/.exec(html)![1]!;
 
         for (const path of ["/", `/s/${id}`, "/index.html"]) {
-            const policy = (await fetch(base + path)).headers.get("content-security-policy") ?? "";
+            const policy =
+                (
+                    await fetch(base + path, {
+                        headers: { cookie: `pocket_auth=${ownerToken}` },
+                    })
+                ).headers.get("content-security-policy") ?? "";
 
             assert.ok(
                 policy.includes(`'sha256-${createHash("sha256").update(map).digest("base64")}'`),

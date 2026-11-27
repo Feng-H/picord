@@ -657,6 +657,10 @@ setInterval(() => {}, 60_000);
             await new Promise((resolve) => setTimeout(resolve, 50));
         }
 
+        if (existsSync(started)) {
+            await accessMessages(data);
+        }
+
         return existsSync(started);
     } finally {
         const timer = setTimeout(() => launcher?.kill("SIGKILL"), 15_000);

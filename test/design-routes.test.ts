@@ -2,7 +2,7 @@
 // one person's tweaks, "go back to this one" (a new version in one commit, once for each key), what the module registers, and
 // that the page it points at is untrusted data.
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { cleanUp, newSession, openApp, owner, root, scriptedModel } from "./helpers.ts";
+import { cleanUp, newSession, openApp, owner, root, scriptedModel, shareSession } from "./helpers.ts";
 import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
 import { join } from "node:path";
@@ -52,6 +52,10 @@ before(async () => {
         const added = app.config.addUser(name, role, sessions ? [...sessions] : undefined);
 
         people[name] = { token: added.token, id: added.user.id };
+
+        if (sessions === undefined) {
+            await shareSession(app, session, added.user);
+        }
     }
 
     people.owner = { token: app.config.ownerToken, id: owner(app).id };

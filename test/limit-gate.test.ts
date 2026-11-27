@@ -92,12 +92,20 @@ function fake(steps: Step[] = [], repeat?: Step | ((sessionId: string | undefine
     return { calls, models };
 }
 
-const ask = (
+const ask = async (
     rt: ReturnType<typeof fake>,
     id = "m",
     provider = "p",
     options?: SimpleStreamOptions,
-) => rt.models.streamSimple(model(id, provider), {} as never, options).result();
+) => {
+    const keepAlive = setInterval(() => {}, 50);
+
+    try {
+        return await rt.models.streamSimple(model(id, provider), {} as never, options).result();
+    } finally {
+        clearInterval(keepAlive);
+    }
+};
 
 const stops = async (...asked: ReturnType<typeof ask>[]) =>
     (await Promise.all(asked)).map((result) => result.stopReason);

@@ -12,6 +12,7 @@ import {
     root,
     say,
     scriptedModel,
+    shareSession,
     until,
 } from "./helpers.ts";
 import assert from "node:assert/strict";
@@ -92,6 +93,8 @@ test("a `!` command Pi sees makes Pi work for its person, as a message does; one
     const id = await newSession(app, folder);
     const { user: guest } = app.config.addUser("Runner", "guest");
 
+    await shareSession(app, id, guest);
+
     try {
         await say(app, id, "hello from the owner");
         assert.equal(app.attribution.requesterOf(id), owner(app).id);
@@ -145,6 +148,8 @@ test("a command that is stopped says so and keeps what it printed; a retried req
     assert.equal(stopped.length, 1);
     assert.equal(stopped[0]?.kind === "shell" && stopped[0].output, "before\n");
     const { user: viewer } = app.config.addUser("Watcher", "viewer");
+
+    await shareSession(app, id, viewer);
 
     try {
         await assert.rejects(
@@ -242,6 +247,7 @@ test("after a restart, an older message settling does not take Pi back from the 
     const id = await newSession(first, folder);
     const { user: guest } = first.config.addUser("Late", "guest");
 
+    await shareSession(first, id, guest);
     await first.commands.submit(id, owner(first), { text: "write a lot", requestId: "slow-1" });
     await until(() => first.isBusy(id), "Pi to start answering");
     const { taskId } = await first.shell.start(id, guest, { command: "echo from the guest" });
@@ -274,6 +280,8 @@ test("after a restart, an older message settling does not take Pi back from the 
 test("only the owner may read Pi's folder and the app's data, but anyone who steers may read uploads", async () => {
     const id = await newSession(app, folder);
     const { user: guest } = app.config.addUser("Guest", "guest");
+
+    await shareSession(app, id, guest);
 
     try {
         const agentFile = join(process.env.PI_CODING_AGENT_DIR!, "settings-test.json");

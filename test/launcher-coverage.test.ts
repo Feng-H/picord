@@ -17,12 +17,14 @@ test("the launcher opens every sheet the menu opens", () => {
 });
 
 test("the launcher has every row of the menu, by name", () => {
-    // `item("Name"`, and `item(cond ? "One" : "Other"` on the lines after it.
+    // `item("Name"` / `item(t("Name")`, and `item(cond ? t("One") : t("Other"))` / `item(t(cond ? "One" : "Other"))`.
     const names = [
-        ...[...menu.matchAll(/item\(\s*"([^"]+)"/g)].map((match) => match[1]),
-        ...[...menu.matchAll(/item\(\s*\n\s*[^"\n]*\?\s*"([^"]+)"\s*:\s*"([^"]+)"/g)].flatMap(
-            (match) => [match[1], match[2]],
-        ),
+        ...[...menu.matchAll(/item\(\s*(?:t\(\s*)?"([^"]+)"/g)].map((match) => match[1]),
+        ...[
+            ...menu.matchAll(
+                /item\(\s*(?:t\(\s*)?\n?\s*[^"\n]*\?\s*(?:t\(\s*)?"([^"]+)"\s*\)?\s*:\s*(?:t\(\s*)?"([^"]+)"/g,
+            ),
+        ].flatMap((match) => [match[1], match[2]]),
     ];
     const missing = names.filter((name) => !launcher.includes(`"${name}`));
 

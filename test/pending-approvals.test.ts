@@ -9,6 +9,7 @@ import {
     owner,
     root,
     scriptedModel,
+    shareSession,
     until,
 } from "./helpers.ts";
 import assert from "node:assert/strict";
@@ -225,6 +226,9 @@ test("the requester and whole source audience must see a wait; PiP is excluded",
     const shared = await source();
     const privateSession = await source();
     const guest = app.config.addUser("Limited", "guest", [String(shared)]).user;
+
+    await shareSession(app, shared, guest);
+    await shareSession(app, privateSession, guest);
     const pip = await app.pip.ensure(owner(app));
     const seen: string[] = [];
     const off = api.on(shared, "created", (value) => seen.push(value.id));
@@ -256,6 +260,7 @@ test("the requester and whole source audience must see a wait; PiP is excluded",
         // A subscription's person is re-read, not a stale User object retained before access was removed.
         const limitedSource = await source();
 
+        await shareSession(app, limitedSource, guest);
         app.config.updateUser(guest.id, {
             sessions: [String(shared), String(privateSession), String(limitedSource)],
         });
@@ -349,6 +354,9 @@ test("a subagent's approval belongs to its top-level session and follows that se
     assert.equal(wait.session, id);
     const shared = await source();
     const invited = app.config.addUser("Shared source only", "viewer", [String(shared)]).user;
+
+    await shareSession(app, shared, invited);
+    await shareSession(app, id, invited);
 
     try {
         assert.equal(

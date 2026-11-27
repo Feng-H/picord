@@ -78,6 +78,8 @@ function sandbox() {
         npm_config_update_notifier: "false",
         npm_config_audit: "false",
         npm_config_fund: "false",
+        // npm 12 blocks lifecycle scripts in tarballs unless dangerously-allow-all-scripts is enabled.
+        npm_config_dangerously_allow_all_scripts: "true",
     };
     const command = npmCommand();
 

@@ -49,6 +49,7 @@
         "check": "tsc --noEmit -p . && node test/types-file.ts && node docs-site/check-reference.mjs",
         "check:sandbox": "instabox run --push . --timeout 5m -- 'npm ci && npm run check && npm run lint'",
         "test": "node --test --test-concurrency=4 --test-timeout=600000 test/*.test.ts",
+        "test:server": "node -e \"const {spawnSync}=require('node:child_process'),{readdirSync}=require('node:fs');const files=readdirSync('test').filter(f=>f.endsWith('.test.ts')).sort().map(f=>'test/'+f);const env={...process.env,PI_POCKET_BROWSER:'/nonexistent'};if(process.platform!=='win32'&&env.TMPDIR?.includes('/.')){env.TMPDIR='/tmp';}const r=spawnSync(process.execPath,['--test','--test-force-exit','--test-concurrency=2','--test-timeout=120000',...files],{stdio:'inherit',env});process.exit(r.status??1);\"",
         "site:publish": "gh workflow run pages.yml",
         "format": "eslint --fix . && prettier --write .",
         "format:check": "prettier --check . && eslint .",

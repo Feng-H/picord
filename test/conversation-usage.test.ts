@@ -7,6 +7,7 @@ import {
     owner,
     root,
     scriptedModel,
+    shareSession,
 } from "./helpers.ts";
 import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -280,6 +281,9 @@ test("GET usage uses conversation-route access and filters hidden descendants", 
         (await tx.doc(SessionsDoc)).items[String(hidden)]!.pip = other.user.id;
     }, context);
 
+    await shareSession(app, source, viewer.user);
+    await shareSession(app, visible, viewer.user);
+
     try {
         const allowed = await call(source, viewer.token);
 
@@ -317,6 +321,8 @@ test("usage rechecks access after awaited reads and expires with the route", asy
 
         return value;
     }) as typeof app.harness.snapshot;
+
+    await shareSession(app, source, viewer.user);
 
     try {
         // First prove the new capability exists; baseline must fail this test too.

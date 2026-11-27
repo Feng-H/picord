@@ -29,3 +29,5 @@ jobs:
               run: npm run check
             - name: Code style and linting
               run: npm run lint
+            - name: Server test suite
+              run: npm run test:server

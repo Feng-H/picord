@@ -9,6 +9,7 @@ import {
     openApp,
     owner,
     scriptedModel,
+    shareSession,
     until,
     offerSubagents,
 } from "./helpers.ts";
@@ -90,6 +91,7 @@ test("with approvals that need someone else, a guest cannot allow a call their o
     await app.setApprovalRule(owner(app), "others");
     const id = await newSession(app);
 
+    await shareSession(app, id, alex, bea, viewer);
     await sayAs(alex, id, "clean up the build folder");
 
     const first = ask(id, "rm -rf build");
@@ -143,6 +145,7 @@ test("who asked is fixed when the call asks, a subagent works for whoever its pa
     try {
         const id = await newSession(app);
 
+        await shareSession(app, id, alex, bea);
         await sayAs(alex, id, "tidy up");
         const waiting = ask(id, "rm -rf build");
 
@@ -240,6 +243,7 @@ test("whose work Pi does survives a crash before it was written down, and when n
     try {
         const id = await newSession(app);
 
+        await shareSession(app, id, alex, bea);
         await sayAs(alex, id, "start a helper");
         const helper = (await app.harness.snapshot(SubagentsDoc, id, context))!.agents.helper!
             .conversationId;
@@ -284,6 +288,8 @@ test("whose work Pi does survives a crash before it was written down, and when n
         await asked.answered;
 
         const quiet = await newSession(app);
+
+        await shareSession(app, quiet, bea);
         const unknown = ask(quiet, "rm -rf tmp");
 
         assert.equal(app.approvals.forConversation(quiet)[0]?.requestedBy, undefined);
@@ -356,6 +362,7 @@ test("an approval notification offers Allow only to people who may allow, and on
         await app.setApprovalRule(owner(app), "others");
         const id = await newSession(app);
 
+        await shareSession(app, id, alex);
         await sayAs(alex, id, "please deploy");
 
         const offered = (subject: string) => {

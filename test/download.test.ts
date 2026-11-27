@@ -1,5 +1,13 @@
 // A file of a session's folder as a download: for whom the file viewer lets read it, never past a link or the folder.
-import { type App, cleanUp, newSession, openApp, scriptedModel, work } from "./helpers.ts";
+import {
+    type App,
+    cleanUp,
+    newSession,
+    openApp,
+    scriptedModel,
+    shareSession,
+    work,
+} from "./helpers.ts";
 import assert from "node:assert/strict";
 import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
@@ -88,7 +96,10 @@ test("a download needs a sign-in, a file, and the right to steer", async () => {
     // A link at the file is not followed, for anyone.
     assert.equal((await download("exports/link.txt")).status, 404);
 
-    const viewer = app.config.addUser("Viewer", "viewer").token;
+    const viewerUser = app.config.addUser("Viewer", "viewer");
+
+    await shareSession(app, id, viewerUser.user);
+    const viewer = viewerUser.token;
 
     assert.equal((await download("exports/deck-v2.pptx", viewer)).status, 403);
     assert.equal((await download(outside, viewer)).status, 403);

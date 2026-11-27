@@ -9,6 +9,7 @@ import {
     root,
     say,
     scriptedModel,
+    shareSession,
 } from "./helpers.ts";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -133,6 +134,7 @@ test("a session's changes list git's uncommitted files, mark Pi's, and give each
     });
     const viewer = app.config.addUser("Vee", "viewer").user;
 
+    await shareSession(app, id, viewer);
     await assert.rejects(app.workspace.changes(id, viewer), { status: 403 });
 
     // A same-line-count rewrite still changes its version, so the browser reads the new diff.
@@ -212,6 +214,7 @@ test("someone invited to one session sees the changes in its folder, not the res
     const id = await newSession(app, join(shared, "public"));
     const guest = app.config.addUser("Scoped", "guest", [String(id)]).user;
 
+    await shareSession(app, id, guest);
     assert.deepEqual(
         (await app.workspace.changes(id, guest)).files.map((file) => file.path),
         ["public/page.txt"],

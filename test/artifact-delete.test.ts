@@ -1,4 +1,14 @@
-import { type App, cleanUp, context, openApp, owner, say, scriptedModel, work } from "./helpers.ts";
+import {
+    type App,
+    cleanUp,
+    context,
+    openApp,
+    owner,
+    say,
+    scriptedModel,
+    shareSession,
+    work,
+} from "./helpers.ts";
 import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
 import { join } from "node:path";
@@ -91,6 +101,8 @@ test("a delete takes every version, link, saved state, and comment at once; view
     const id = await session();
     const me = app.config.ownerToken;
     const viewer = app.config.addUser("Vee", "viewer");
+
+    await shareSession(app, id, viewer.user);
 
     try {
         await publish(id, "<h1>one</h1>");

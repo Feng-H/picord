@@ -18,6 +18,7 @@ import {
     root,
     say,
     scriptedModel,
+    shareSession,
     until,
     work,
 } from "./helpers.ts";
@@ -191,6 +192,8 @@ test("only the owner can start, move, or link a session to a workspace URI", asy
         await assert.rejects(app.commands.createSession(user, { cwd: uri }), /owner/);
         assert.equal(app.sessions().length, before);
         const id = await newSession(app);
+
+        await shareSession(app, id, user);
         const { submissionId } = await app.commands.submit(id, user, {
             text: "hello",
             requestId: "guest-1",
@@ -205,6 +208,8 @@ test("only the owner can start, move, or link a session to a workspace URI", asy
         );
         // The owner's remote session, shared: a guest steers it, but starts nothing from its folder.
         const shared = await newSession(app, uri);
+
+        await shareSession(app, shared, user);
         const asked = await app.commands.submit(shared, user, { text: "hi", requestId: "g-2" });
 
         await (await app.harness.submission(asked.submissionId, context))!.wait(context);

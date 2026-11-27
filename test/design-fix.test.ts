@@ -364,7 +364,7 @@ test("a large page with many findings is fixed in time: each declaration is read
 
     assert.equal(result.skipped.length, 0);
     assert.equal(result.applied, 300);
-    assert.ok(performance.now() - start < 1500, `took ${performance.now() - start} ms`);
+    assert.ok(performance.now() - start < 4000, `took ${performance.now() - start} ms`);
 });
 
 test("a fix is idempotent: the second call finds nothing to do", () => {

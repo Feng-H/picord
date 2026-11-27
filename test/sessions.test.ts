@@ -11,6 +11,7 @@ import {
     owner,
     say,
     scriptedModel,
+    shareSession,
     until,
 } from "./helpers.ts";
 import assert from "node:assert/strict";
@@ -343,12 +344,14 @@ test("forks need a steering person with access to every session, and an existing
     await say(app, id, "something to fork");
     const [answer] = await ofKind(id, "pi.assistant");
     const viewer = app.config.addUser("Vera", "viewer").user;
+    const scoped = guest("Scoped", [String(id)]);
 
+    await shareSession(app, id, viewer, scoped);
     await assert.rejects(app.commands.fork(id, viewer, { entryId: Number(answer!.id) }), {
         status: 403,
     });
     await assert.rejects(
-        app.commands.fork(id, guest("Scoped", [String(id)]), { entryId: Number(answer!.id) }),
+        app.commands.fork(id, scoped, { entryId: Number(answer!.id) }),
         { status: 403 },
     );
     await say(app, id, "list the files");

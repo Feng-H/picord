@@ -298,6 +298,34 @@ function actionItems() {
                 icon: "sparkle",
                 run: () => openSheet({ type: "rename" }),
             },
+        (() => {
+            const listed =
+                session && store.state.sessions.find((each) => each.id === conversation.id);
+
+            if (listed?.canManageMembers) {
+                return {
+                    label: listed.isGroup ? "Group members" : "Share",
+                    detail: listed.isGroup
+                        ? `${(listed.memberIds?.length ?? 0) + 1} people`
+                        : "add people or invite",
+                    icon: "users",
+                    run: () => openSheet({ type: "session-share", session: conversation.id }),
+                };
+            }
+
+            if (listed?.canLeave) {
+                return {
+                    label: "Leave group",
+                    icon: "users",
+                    run: () =>
+                        attempt(() => actions.leaveSession(conversation.id)).then(() =>
+                            navigate(null),
+                        ),
+                };
+            }
+
+            return false;
+        })(),
         session &&
             steer &&
             planAvailable() && {

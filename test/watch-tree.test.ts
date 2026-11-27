@@ -63,10 +63,11 @@ test("a watched tree tells of added, written, and removed files, and not of read
         await until(() => changes.slice(before).includes("app.js"), "the rename is told");
 
         const told = changes.length;
+        const added = join(directory, "fonts", "new.woff2");
 
-        rmSync(app);
+        rmSync(added);
         await until(() => changes.length === told + 1, "the removal is told");
-        assert.equal(changes.at(-1), "app.js");
+        assert.equal(changes.at(-1), join("fonts", "new.woff2"));
     } finally {
         stop();
     }

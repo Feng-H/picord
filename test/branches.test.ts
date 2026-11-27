@@ -8,6 +8,7 @@ import {
     owner,
     root,
     scriptedModel,
+    shareSession,
     until,
 } from "./helpers.ts";
 import assert from "node:assert/strict";
@@ -110,6 +111,7 @@ test("switching waits for git's say, a good name, and the right person", async (
     const viewer = app.config.addUser("Vee", "viewer").user;
     const invited = app.config.addUser("Ivy", "guest", [String(id)]).user;
 
+    await shareSession(app, id, viewer, invited);
     await assert.rejects(app.workspace.switchBranch(id, viewer, { name: "old-idea" }), {
         status: 403,
     });

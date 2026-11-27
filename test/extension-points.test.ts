@@ -12,6 +12,7 @@ import {
     owner,
     root,
     scriptedModel,
+    shareSession,
     until,
     work,
 } from "./helpers.ts";
@@ -525,6 +526,7 @@ test("an ask's card is answered by the person Pi works for, and its values reach
     const me = owner(app);
     const guest = app.config.addUser("Gus", "guest").user;
 
+    await shareSession(app, id, guest);
     await app.commands.submit(id, me, { text: "please sign in", requestId: crypto.randomUUID() });
     await until(() => app.approvals.forConversation(id).length === 1, "the card");
 

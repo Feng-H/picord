@@ -14,6 +14,7 @@ import {
     recordCost,
     say,
     scriptedModel,
+    shareSession,
     until,
 } from "./helpers.ts";
 import assert from "node:assert/strict";
@@ -195,6 +196,8 @@ test("someone who cannot see the origin learns nothing of it and cannot reach it
     await app.commands.updateSession(id, owner(app), { title: "Secret origin" });
     const { session: target } = await start(id);
     const { user } = app.config.addUser("Target only", "guest", [String(target)]);
+
+    await shareSession(app, target, user);
     // Someone who sees the linked session but not the origin: the origin's name stays out of the list Pi gets.
     const [origin] = await app.linkedSessions.list(target);
 
@@ -762,6 +765,8 @@ test("a view names a linked session's peer only to someone who can see that peer
     const { session: target } = await start(id);
     const [origin] = await app.linkedSessions.list(target);
     const guest = app.config.addUser("Target only", "guest", [String(target)]).user;
+
+    await shareSession(app, target, guest);
     const views = [fakeTab(target, owner(app)), fakeTab(target, guest)];
 
     for (const tab of views) {

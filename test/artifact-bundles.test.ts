@@ -8,6 +8,7 @@ import {
     root,
     say,
     scriptedModel,
+    shareSession,
     until,
     work,
 } from "./helpers.ts";
@@ -346,6 +347,8 @@ test("every asset is sandboxed and nosniff; scoped capability serves opaque-orig
     assert.equal((await get(root + "/__proto__")).status, 200);
     assert.equal((await get(`/a/${session}/bundle/2/__proto__`)).status, 404);
     const other = app.config.addUser("Bundle guest", "guest");
+
+    await shareSession(app, session, other.user);
     const guestPage = await fetch(base + root, {
         headers: { authorization: `Bearer ${other.token}` },
     });

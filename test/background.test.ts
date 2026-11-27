@@ -10,6 +10,7 @@ import {
     owner,
     root,
     scriptedModel,
+    shareSession,
     until,
 } from "./helpers.ts";
 import assert from "node:assert/strict";
@@ -285,6 +286,7 @@ test(
         const id = await session();
         const { user } = app.config.addUser("Batch guest", "guest");
 
+        await shareSession(app, id, user);
         await app.background.start(id, { command: "echo mine", requestedBy: owner(app).id });
         await app.background.start(id, { command: "echo theirs", requestedBy: user.id });
         const messages = async () =>
@@ -566,6 +568,8 @@ test(
                     headers: { authorization: `Bearer ${token}`, "x-pocket": "1" },
                 });
             const viewer = app.config.addUser("Watcher", "viewer");
+
+            await shareSession(app, id, viewer.user);
             const list = await get(viewer.token, "background");
 
             assert.equal(list.status, 200);
@@ -967,6 +971,7 @@ test("Running now's Stop ends a background task, for those who may steer", { ski
             });
         const viewer = app.config.addUser("Viewer", "viewer");
 
+        await shareSession(app, id, viewer.user);
         assert.equal((await stop(viewer.token, String(item.taskId))).status, 403);
         assert.equal((await stop(app.config.ownerToken, "999999")).status, 404);
         assert.equal((await stop(app.config.ownerToken, String(item.taskId))).status, 200);

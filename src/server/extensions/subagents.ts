@@ -523,7 +523,12 @@ async function working(tx: Tx, task: number | undefined): Promise<boolean> {
     const status = (await tx.task(task as never))?.state.status;
 
     // One completing has taken its last reports already.
-    return status === "pending" || status === "running" || status === "waiting";
+    return (
+        status === "pending" ||
+        status === "running" ||
+        status === "waiting" ||
+        status === "sleeping"
+    );
 }
 
 /** Wait until the submission `id` has left `conversationId`'s queue: placed, withdrawn, or aborted. */
@@ -1820,7 +1825,7 @@ export default function createSubagents(host: PocketHost, web?: ExtensionWeb) {
 
                 // For the subagents bar: what it works on now, and since when.
                 record.asked = message.trim().slice(0, 300);
-                record.askedAt = Date.now();
+                record.askedAt = api.now();
                 delete record.stoppedBy;
 
                 if (!watched) {

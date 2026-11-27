@@ -1,4 +1,4 @@
-import { cleanUp, newSession, openApp, owner, root, scriptedModel } from "./helpers.ts";
+import { cleanUp, newSession, openApp, owner, root, scriptedModel, shareSession } from "./helpers.ts";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
@@ -67,6 +67,10 @@ before(async () => {
         const added = app.config.addUser(name, role, sessions ? [...sessions] : undefined);
 
         people[name] = { token: added.token, id: added.user.id };
+
+        if (sessions === undefined) {
+            await shareSession(app, session, added.user);
+        }
     }
 
     people.owner = { token: app.config.ownerToken, id: owner(app).id };

@@ -11,6 +11,7 @@ import {
     recordCost,
     root,
     scriptedModel,
+    shareSession,
     until,
 } from "./helpers.ts";
 import assert from "node:assert/strict";
@@ -338,6 +339,7 @@ test("a schedule Pi sets up is the work of whom it worked for, and is cancelled 
     const hal = app.config.addUser("Hal", "guest").user;
     const ida = app.config.addUser("Ida", "guest").user;
 
+    await shareSession(app, id, hal, ida);
     await say(id, "remind yourself", hal);
     await say(id, "remind yourself", ida);
     await say(id, "something else");
@@ -373,6 +375,7 @@ test("people need the right to steer to schedule", async () => {
     const id = await newSession(app);
     const viewer = app.config.addUser("Vee", "viewer").user;
 
+    await shareSession(app, id, viewer);
     await assert.rejects(app.commands.schedule(id, viewer, { when: "in 10m x" }), { status: 403 });
 });
 
@@ -380,6 +383,7 @@ test("a schedule is cancelled once its person may not steer anymore or a limit i
     const id = await newSession(app);
     const gus = app.config.addUser("Gus", "guest").user;
 
+    await shareSession(app, id, gus);
     await app.commands.schedule(id, gus, { when: "in 10m from Gus", zone: "UTC" });
     await app.commands.schedule(id, owner(app), { when: "in 10m from the owner", zone: "UTC" });
     app.config.updateUser(gus.id, { role: "viewer" });
@@ -480,6 +484,7 @@ test("a schedule can be changed: its text and time, from once to a repeat and ba
     );
     const viewer = app.config.addUser("Vic", "viewer").user;
 
+    await shareSession(app, id, viewer);
     await assert.rejects(
         app.commands.updateSchedule(id, viewer, once.id, { text: "x", next: now + 60_000 }),
         { status: 403 },
@@ -618,6 +623,7 @@ test("a person pauses a schedule and resumes it: paused, nothing goes out; resum
     });
     const viewer = app.config.addUser("Vee", "viewer").user;
 
+    await shareSession(app, id, viewer);
     await assert.rejects(app.commands.pauseSchedule(id, viewer, repeat.id, true), { status: 403 });
     await assert.rejects(app.commands.pauseSchedule(id, owner(app), "nope", true), { status: 404 });
     await assert.rejects(app.commands.pauseSchedule(id, owner(app), repeat.id, "yes"), {

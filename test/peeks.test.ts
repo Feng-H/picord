@@ -10,6 +10,7 @@ import {
     owner,
     say,
     scriptedModel,
+    shareSession,
     until,
     work,
     offerSubagents,
@@ -280,6 +281,9 @@ test("peeks leave out sessions the person may not see, and end with the tab or t
     const mine = await newSession(app);
     const theirs = await newSession(app);
     const sam = app.config.addUser("Sam", "guest", [String(mine)]).user;
+
+    await shareSession(app, mine, sam);
+    await shareSession(app, theirs, sam);
     const tab = fakeTab(undefined, sam);
 
     try {

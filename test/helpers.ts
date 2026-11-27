@@ -154,6 +154,18 @@ export async function newSession(app: App, cwd = work): Promise<ConversationId> 
     return id;
 }
 
+/** Share an existing session with `users` so multi-user in-session tests can see it under Option B. */
+export async function shareSession(
+    app: App,
+    id: ConversationId,
+    ...users: readonly User[]
+): Promise<void> {
+    const current = app.sessionMeta(id)?.members ?? [];
+    const members = [...new Set([...current, ...users.map((user) => user.id)])];
+
+    await app.commands.setSessionMembers(id, owner(app), members);
+}
+
 export async function loadTools(app: App, id: ConversationId, ...names: string[]): Promise<void> {
     await (
         await app.conversation(id)
