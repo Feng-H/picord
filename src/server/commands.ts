@@ -1169,14 +1169,17 @@ export class Commands {
 
                 await this.#touched(id, titled, text === titled || text === "" ? undefined : text);
 
-                // Zero-LLM Activity Capture for Conversation Rule Engine
-                const channel = app.channels?.get(id);
+                // Zero-LLM Activity Capture for Conversation Rule Engine: only human messages reset user-scoped silence timers.
+                if (!knownRetry && app.pip.ownerOf(id) === undefined) {
+                    const activityActor = via === undefined ? "user" : "system";
+                    const channel = app.channels?.get(id);
 
-                if (channel?.name) {
-                    app.ruleEngine?.touch(channel.name, Date.now(), submissionId);
+                    if (channel?.name) {
+                        app.ruleEngine?.touch(channel.name, Date.now(), submissionId, activityActor);
+                    }
+
+                    app.ruleEngine?.touch(String(id), Date.now(), submissionId, activityActor);
                 }
-
-                app.ruleEngine?.touch(String(id), Date.now(), submissionId);
 
                 // For extensions (`host.on`): once for each message (two retries at once, too), never for PiP's
                 // conversation, which is its person's alone.

@@ -5,6 +5,7 @@ export const SIDEBAR = [
     {
         label: "Getting started",
         items: [
+            ["docs/user-guide.md", "User guide (使用手册)"],
             ["docs/extensions.md", "Overview"],
             ["docs/extensions/first-extension.md", "Your first extension"],
             ["docs/customizing.md", "Changes without code"],

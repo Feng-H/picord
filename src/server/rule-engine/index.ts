@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, writeFileSync, appendFileSync, mkdirSync, watch, type FSWatcher } from "node:fs";
-import { join, dirname } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 /**
  * Conversation Rule Engine
@@ -46,9 +46,15 @@ export interface ConversationRule {
     channel: string;
     on: "silence";
     after: string | number;
+    /** Which activity resets the silence timer: "user" (human messages only, default) or "any". */
+    actor?: "user" | "any";
+    /** Where to inject in-channel [engine] status notes: "source", "target" (default when forwardToChannel is set), or "none". */
+    notifications?: "source" | "target" | "none";
     cursor?: EntryIdCursor;
     action: RuleAction;
 }
+
+export type ActivityActor = "user" | "system";
 
 export interface RuleRuntimeState {
     lastActivity?: number;
@@ -173,31 +179,55 @@ export function formatRulePrompt(
 }
 
 /**
- * Watch rule files on disk and trigger reload when modified.
+ * Watch rule files on disk (via parent directories so atomic renames and new files still trigger reload).
  */
 export function watchRuleFiles(
     paths: string[],
     onReload: (file: string) => void,
 ): () => void {
     const watchers: FSWatcher[] = [];
+    const byDir = new Map<string, string[]>();
     let debounceTimer: NodeJS.Timeout | undefined;
 
     for (const filePath of paths) {
-        if (existsSync(filePath)) {
-            try {
-                const watcher = watch(filePath, () => {
-                    clearTimeout(debounceTimer);
-                    debounceTimer = setTimeout(() => {
-                        try {
-                            onReload(filePath);
-                        } catch {}
-                    }, 200);
-                    debounceTimer.unref();
-                });
+        const dir = dirname(filePath);
+        const list = byDir.get(dir) ?? [];
 
-                watchers.push(watcher);
-            } catch {}
+        list.push(filePath);
+        byDir.set(dir, list);
+    }
+
+    for (const [dir, filePaths] of byDir) {
+        if (!existsSync(dir)) {
+            continue;
         }
+
+        const expectedNames = new Set(filePaths.map((p) => basename(p)));
+
+        try {
+            const watcher = watch(dir, (_eventType, filename) => {
+                const name = filename === null ? undefined : String(filename);
+
+                if (name !== undefined && !expectedNames.has(name)) {
+                    return;
+                }
+
+                const matchedFile =
+                    name !== undefined
+                        ? (filePaths.find((p) => basename(p) === name) ?? filePaths[0]!)
+                        : filePaths[0]!;
+
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(() => {
+                    try {
+                        onReload(matchedFile);
+                    } catch {}
+                }, 200);
+                debounceTimer.unref();
+            });
+
+            watchers.push(watcher);
+        } catch {}
     }
 
     return () => {
@@ -395,6 +425,8 @@ export interface RuleEngineStore {
     loadRules?(): Promise<ConversationRule[]> | ConversationRule[];
     getState(ruleId: string): RuleRuntimeState | undefined;
     saveState(ruleId: string, state: RuleRuntimeState): Promise<void> | void;
+    deleteState?(ruleId: string): Promise<void> | void;
+    pruneStatesExcept?(activeRuleIds: ReadonlySet<string>): Promise<void> | void;
 }
 
 export class InMemoryRuleEngineStore implements RuleEngineStore {
@@ -408,6 +440,18 @@ export class InMemoryRuleEngineStore implements RuleEngineStore {
 
     saveState(ruleId: string, state: RuleRuntimeState): void {
         this.#states.set(ruleId, { ...state });
+    }
+
+    deleteState(ruleId: string): void {
+        this.#states.delete(ruleId);
+    }
+
+    pruneStatesExcept(activeRuleIds: ReadonlySet<string>): void {
+        for (const key of this.#states.keys()) {
+            if (!activeRuleIds.has(key)) {
+                this.#states.delete(key);
+            }
+        }
     }
 }
 
@@ -435,7 +479,34 @@ export class FileRuleEngineStore implements RuleEngineStore {
 
     saveState(ruleId: string, state: RuleRuntimeState): void {
         this.#states[ruleId] = { ...state };
+        this.#flush();
+    }
 
+    deleteState(ruleId: string): void {
+        if (!(ruleId in this.#states)) {
+            return;
+        }
+
+        delete this.#states[ruleId];
+        this.#flush();
+    }
+
+    pruneStatesExcept(activeRuleIds: ReadonlySet<string>): void {
+        let changed = false;
+
+        for (const key of Object.keys(this.#states)) {
+            if (!activeRuleIds.has(key)) {
+                delete this.#states[key];
+                changed = true;
+            }
+        }
+
+        if (changed) {
+            this.#flush();
+        }
+    }
+
+    #flush(): void {
         try {
             writeFileSync(this.#file, JSON.stringify(this.#states, null, 2), "utf8");
         } catch {}
@@ -457,32 +528,18 @@ export function loadDefaultRules(dataDir?: string, projectDir?: string): Convers
         if (existsSync(file)) {
             try {
                 const parsed = JSON.parse(readFileSync(file, "utf8"));
-                const list = Array.isArray(parsed) ? parsed : parsed.rules;
+                const list = Array.isArray(parsed) ? parsed : parsed?.rules;
 
-                if (Array.isArray(list) && list.length > 0) {
+                if (Array.isArray(list)) {
                     return list as ConversationRule[];
                 }
             } catch {}
+
+            return [];
         }
     }
 
-    // Default built-in rule for smalltalk channel
-    return [
-        {
-            id: "smalltalk-card-summary",
-            title: "卡片整理倒计时",
-            channel: "smalltalk",
-            on: "silence",
-            after: "60m",
-            cursor: { type: "entry_id" },
-            action: {
-                type: "prompt",
-                instruction: "读取增量对话并整理为卢曼卡片推送至 #zk-review",
-                forwardToChannel: "zk-review",
-                archiveFile: ".dialogue-session/viewpoints.md",
-            },
-        },
-    ];
+    return [];
 }
 
 export interface ConversationRuleEngineOptions {
@@ -513,6 +570,8 @@ export class ConversationRuleEngine {
                 this.#states.set(rule.id, { ...persisted });
             }
         }
+
+        void this.#store.pruneStatesExcept?.(new Set(this.#rules.map((r) => r.id)));
     }
 
     /**
@@ -538,6 +597,18 @@ export class ConversationRuleEngine {
         const oldMap = new Map(oldRules.map((r) => [r.id, r]));
         const newMap = new Map(newRules.map((r) => [r.id, r]));
 
+        this.#rules = [...newRules];
+
+        for (const rule of this.#rules) {
+            if (!this.#states.has(rule.id)) {
+                const persisted = this.#store.getState(rule.id);
+
+                if (persisted) {
+                    this.#states.set(rule.id, { ...persisted });
+                }
+            }
+        }
+
         // 1. rule_added diff
         for (const [id, r] of newMap) {
             if (!oldMap.has(id)) {
@@ -546,20 +617,33 @@ export class ConversationRuleEngine {
                     type: "rule_added",
                     ruleId: id,
                     channel: r.channel,
-                    details: { title: r.title, after: r.after, action: r.action },
+                    details: {
+                        title: r.title,
+                        after: r.after,
+                        action: r.action,
+                        notifications: r.notifications,
+                    },
                 });
             }
         }
 
-        // 2. rule_removed diff
+        // 2. rule_removed diff — also cancel projected schedules and clear persisted state
         for (const [id, r] of oldMap) {
             if (!newMap.has(id)) {
+                this.#states.delete(id);
+                void this.#store.deleteState?.(id);
                 this.emitEvent({
                     timestamp: Date.now(),
                     type: "rule_removed",
                     ruleId: id,
                     channel: r.channel,
-                    details: { title: r.title, after: r.after },
+                    details: {
+                        title: r.title,
+                        after: r.after,
+                        action: r.action,
+                        notifications: r.notifications,
+                        cancelledScheduleId: `rule-silence-${id}`,
+                    },
                 });
             }
         }
@@ -577,22 +661,12 @@ export class ConversationRuleEngine {
                     details: {
                         title: newR.title,
                         after: newR.after,
+                        action: newR.action,
+                        notifications: newR.notifications,
                         before: oldR,
                         afterRule: newR,
                     },
                 });
-            }
-        }
-
-        this.#rules = [...newRules];
-
-        for (const rule of this.#rules) {
-            if (!this.#states.has(rule.id)) {
-                const persisted = this.#store.getState(rule.id);
-
-                if (persisted) {
-                    this.#states.set(rule.id, { ...persisted });
-                }
             }
         }
     }
@@ -640,47 +714,59 @@ export class ConversationRuleEngine {
     }
 
     /**
-     * Record activity in a channel. User messages immediately update `lastActivity`.
-     * Zero-LLM involvement, completely atomic.
+     * Record activity in a channel. By default (`actor: "user"`), only human user messages
+     * update `lastActivity` and reset the silence countdown; automated/AI submissions (`"system"`)
+     * are ignored unless the rule sets `actor: "any"`.
      */
-    touch(channel: string, timestamp = Date.now(), entryId?: number): void {
+    touch(
+        channel: string,
+        timestamp = Date.now(),
+        entryId?: number,
+        activityActor: ActivityActor = "user",
+    ): void {
         const cleanChannel = channel.replace(/^#/, "").toLowerCase();
 
         for (const rule of this.#rules) {
             const ruleChannel = rule.channel.replace(/^#/, "").toLowerCase();
 
-            if (ruleChannel === cleanChannel) {
-                const current = this.getState(rule.id) ?? {};
-
-                current.lastActivity = timestamp;
-
-                if (entryId !== undefined) {
-                    const num = Number(entryId);
-
-                    if (Number.isFinite(num)) {
-                        current.headEntryId = Math.max(current.headEntryId ?? 0, num);
-                    }
-                }
-
-                this.#states.set(rule.id, current);
-                this.#store.saveState(rule.id, current);
-
-                const afterMs = parseDuration(rule.after);
-                const next = timestamp + afterMs;
-
-                this.emitEvent({
-                    timestamp,
-                    type: "schedule_projected",
-                    ruleId: rule.id,
-                    channel: rule.channel,
-                    details: {
-                        title: rule.title || rule.id,
-                        next,
-                        remainingMs: afterMs,
-                        scheduleId: `rule-silence-${rule.id}`,
-                    },
-                });
+            if (ruleChannel !== cleanChannel) {
+                continue;
             }
+
+            if (activityActor !== "user" && (rule.actor ?? "user") !== "any") {
+                continue;
+            }
+
+            const current = this.getState(rule.id) ?? {};
+
+            current.lastActivity = timestamp;
+
+            if (entryId !== undefined) {
+                const num = Number(entryId);
+
+                if (Number.isFinite(num)) {
+                    current.headEntryId = Math.max(current.headEntryId ?? 0, num);
+                }
+            }
+
+            this.#states.set(rule.id, current);
+            this.#store.saveState(rule.id, current);
+
+            const afterMs = parseDuration(rule.after);
+            const next = timestamp + afterMs;
+
+            this.emitEvent({
+                timestamp,
+                type: "schedule_projected",
+                ruleId: rule.id,
+                channel: rule.channel,
+                details: {
+                    title: rule.title || rule.id,
+                    next,
+                    remainingMs: afterMs,
+                    scheduleId: `rule-silence-${rule.id}`,
+                },
+            });
         }
     }
 

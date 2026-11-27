@@ -61,8 +61,7 @@ function makeFakeHost(
             {
                 title: "#digest",
                 channel: true,
-                createdBy: MEMBER_USER.id,
-                members: [OWNER_USER.id],
+                createdBy: OWNER_USER.id,
             },
         ],
         [3, { title: "Private DM", channel: false, createdBy: MEMBER_USER.id }],
@@ -339,11 +338,11 @@ test("DialogueRuntime skips empty deltas, unanswered runs, and path-traversal ar
         });
         assert.equal(turnsSubmitted.length, 0);
 
-        // 2. Unanswered run -> cursor stays undefined, no forward post, no marker
+        // 2. Unanswered run -> cursor stays undefined, no marker
         entriesByConv.set(1, [
             { id: 5 as unknown as EntryRecord["id"], kind: "input", model: [] } as unknown as EntryRecord,
         ]);
-        nextAnswerByConv.set(1, { status: "unanswered", type: "input", answer: 5 });
+        nextAnswerByConv.set(2, { status: "unanswered", type: "input", answer: 5 });
 
         await runtime.handleRuleDispatchedTask({
             ruleId: "r-skip",
@@ -355,6 +354,7 @@ test("DialogueRuntime skips empty deltas, unanswered runs, and path-traversal ar
             triggeredAt: Date.now(),
         });
         assert.equal(turnsSubmitted.length, 1);
+        assert.equal(Number(turnsSubmitted[0]!.id), 2);
         assert.equal(runtime.ruleEngine.getState("r-skip")?.cursorEntryId, undefined);
 
         // 3. Path traversal archiveFile is rejected safely
@@ -383,22 +383,25 @@ test("DialogueRuntime skips empty deltas, unanswered runs, and path-traversal ar
     }
 });
 
-test("DialogueRuntime handleRuleDispatchedTask summarizes, advances cursor, forwards to channel, and marks archive", async () => {
+test("DialogueRuntime handleRuleDispatchedTask injects directly into target channel without polluting capture channel", async () => {
     const dirs = makeTempDirs();
-    const { host, turnsSubmitted, entriesByConv, nextAnswerByConv } = makeFakeHost(dirs, [
-        {
-            id: "auto-archive",
-            channel: "general",
-            on: "silence",
-            after: "10m",
-            action: {
-                type: "prompt",
-                instruction: "Summarize decisions",
-                forwardToChannel: "digest",
-                archiveFile: "summary.md",
+    const { host, notesWritten, turnsSubmitted, entriesByConv, nextAnswerByConv } = makeFakeHost(
+        dirs,
+        [
+            {
+                id: "auto-archive",
+                channel: "general",
+                on: "silence",
+                after: "10m",
+                action: {
+                    type: "prompt",
+                    instruction: "Summarize decisions",
+                    forwardToChannel: "digest",
+                    archiveFile: "summary.md",
+                },
             },
-        },
-    ]);
+        ],
+    );
 
     writeFileSync(join(dirs.workspaceDir, "summary.md"), "# Notes\nLine 1\n");
     entriesByConv.set(1, [
@@ -413,7 +416,7 @@ test("DialogueRuntime handleRuleDispatchedTask summarizes, advances cursor, forw
             model: [{ role: "assistant", content: [{ type: "text", text: "Key decision: Ship C3" }] }],
         } as unknown as EntryRecord,
     ]);
-    nextAnswerByConv.set(1, { status: "completed", type: "input", answer: 11 });
+    nextAnswerByConv.set(2, { status: "completed", type: "input", answer: 11 });
 
     const runtime = new DialogueRuntime(host);
 
@@ -429,12 +432,17 @@ test("DialogueRuntime handleRuleDispatchedTask summarizes, advances cursor, forw
             triggeredAt: Date.now(),
         });
 
-        // 1. Prompt injected into #general, 2. Forwarded summary posted to #digest
-        assert.equal(turnsSubmitted.length, 2);
-        assert.equal(Number(turnsSubmitted[0]!.id), 1);
+        // Prompt with source excerpts goes straight into #digest (#2), leaving capture channel #general (#1) silent!
+        assert.equal(turnsSubmitted.length, 1);
+        assert.equal(Number(turnsSubmitted[0]!.id), 2);
         assert.equal(turnsSubmitted[0]!.via, "rule:auto-archive");
-        assert.equal(Number(turnsSubmitted[1]!.id), 2);
-        assert.ok(turnsSubmitted[1]!.request.text.includes("Key decision: Ship C3"));
+        assert.ok(turnsSubmitted[0]!.request.text.includes("Hello team"));
+        assert.ok(turnsSubmitted[0]!.request.text.includes("Key decision: Ship C3"));
+        assert.equal(
+            notesWritten.some((note) => Number(note.id) === 1),
+            false,
+            "Capture channel #general must receive zero [engine] system notes",
+        );
 
         // Cursor advanced to 11
         assert.equal(runtime.ruleEngine.getState("auto-archive")?.cursorEntryId, 11);

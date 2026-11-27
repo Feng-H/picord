@@ -101,6 +101,7 @@ const IN_CHANNEL_EVENTS = new Set<string>([
     "rule_fired",
     "cursor_advanced",
 ]);
+const LIFECYCLE_EVENTS = new Set<string>(["rule_added", "rule_removed", "rule_modified"]);
 
 /**
  * Coordinates Picord's four dialogue subsystems (`ChannelManager`, `HistorySearchEngine`,
@@ -166,21 +167,21 @@ export class DialogueRuntime {
         }
     }
 
-    /** Dispatch a rule-triggered prompt into its channel, advance cursor, forward summary, and mark archives. */
+    /** Dispatch a rule-triggered prompt into target channel (when forwardToChannel is set) or source channel, advance cursor, and mark archives. */
     async handleRuleDispatchedTask(task: DispatchedTask): Promise<void> {
         if (this.#closed) {
             return;
         }
 
-        const channel = this.channels.get(task.channel);
+        const sourceChannel = this.channels.get(task.channel);
 
-        if (!channel) {
-            this.#host.log(`rule-engine: target channel not found for ${task.channel}`);
+        if (!sourceChannel) {
+            this.#host.log(`rule-engine: source channel not found for ${task.channel}`);
 
             return;
         }
 
-        const meta = this.#host.sessionMeta(channel.id);
+        const meta = this.#host.sessionMeta(sourceChannel.id);
         const user = this.#host.userById(meta?.createdBy ?? "") ?? this.#host.fallbackUser();
 
         if (!user) {
@@ -189,16 +190,13 @@ export class DialogueRuntime {
             return;
         }
 
-        const { entries, last } = await this.#host.entriesAfter(
-            channel.id,
-            task.cursorEntryId ?? 0,
-            false,
-        );
+        const cursor = task.cursorEntryId ?? 0;
+        const { entries, last } = await this.#host.entriesAfter(sourceChannel.id, cursor, false);
 
         if (this.#closed || entries.length === 0) {
             if (!this.#closed) {
                 this.#host.log(
-                    `rule-engine: no new entries to summarize for #${channel.name} since cursor ${String(task.cursorEntryId)}`,
+                    `rule-engine: no new entries to summarize for #${sourceChannel.name} since cursor ${String(task.cursorEntryId)}`,
                 );
             }
 
@@ -206,14 +204,58 @@ export class DialogueRuntime {
         }
 
         const headEntryId = Math.max(task.headEntryId ?? 0, last);
-        const prompt = formatRulePrompt(task, task.cursorEntryId ?? 0, headEntryId);
+        const targetName = task.forwardToChannel?.replace(/^#/, "").trim();
+        let prompt = formatRulePrompt(task, cursor, headEntryId);
+        let dispatchChannel = sourceChannel;
+
+        if (targetName) {
+            const targetChannel = this.channels.get(targetName);
+
+            if (!targetChannel) {
+                this.#host.log(
+                    `rule-engine: forwardToChannel #${targetName} not found; skipping dispatch to keep #${sourceChannel.name} noise-free`,
+                );
+
+                return;
+            }
+
+            this.#host.requireSee(user, targetChannel.id);
+
+            if (!this.canConversationAccess(targetChannel.id, sourceChannel.id)) {
+                this.#host.log(
+                    `rule-engine: target #${targetChannel.name} cannot access source #${sourceChannel.name}; skipping dispatch`,
+                );
+
+                return;
+            }
+
+            const transcript = await this.#host.readTranscriptEntries(
+                Number(sourceChannel.id),
+                { minEntryId: cursor + 1, maxEntryId: headEntryId },
+                200,
+            );
+            const excerpts = transcript
+                .filter((entry) => entry.kind !== NOTE_ENTRY)
+                .map((entry) => {
+                    const text = entryWords(entry).text.trim();
+
+                    return text ? `[entry ${String(entry.id)}] ${text}` : "";
+                })
+                .filter(Boolean);
+
+            if (excerpts.length > 0) {
+                prompt = `${prompt}\n\n<source-messages channel="#${sourceChannel.name}" range="(${String(cursor)}, ${String(headEntryId)}]">\n${excerpts.join("\n")}\n</source-messages>`;
+            }
+
+            dispatchChannel = targetChannel;
+        }
 
         this.#host.log(
-            `rule-engine: injecting prompt into channel #${channel.name} (${String(task.cursorEntryId ?? 0)}, ${String(headEntryId)}]`,
+            `rule-engine: injecting prompt into #${dispatchChannel.name} for #${sourceChannel.name} (${String(cursor)}, ${String(headEntryId)}]`,
         );
 
         const submitted = await this.#host.submitTurn(
-            channel.id,
+            dispatchChannel.id,
             user,
             { text: prompt, requestId: randomUUID() },
             `rule:${task.ruleId}`,
@@ -238,16 +280,12 @@ export class DialogueRuntime {
         this.ruleEngine.advanceCursor(task.ruleId, headEntryId);
         this.#host.log(`rule-engine: advanced cursor for ${task.ruleId} to ${String(headEntryId)}`);
 
-        if (task.forwardToChannel && settled.type === "input" && settled.answer !== undefined) {
-            await this.#forwardSummary(channel.id, task.forwardToChannel, settled.answer);
-        }
-
         if (task.archiveFile) {
             this.#markArchived(task.archiveFile);
         }
     }
 
-    /** Append rule-engine lifecycle events to disk logs and surface notable transitions as channel notes. */
+    /** Append rule-engine lifecycle events to disk logs and surface notable transitions according to rule notification policy. */
     async handleEngineEvent(event: EngineEvent): Promise<void> {
         if (this.#closed) {
             return;
@@ -268,7 +306,13 @@ export class DialogueRuntime {
             return;
         }
 
-        const channel = this.channels.get(event.channel);
+        const noteChannelName = this.#resolveEngineNoteChannel(event);
+
+        if (!noteChannelName) {
+            return;
+        }
+
+        const channel = this.channels.get(noteChannelName);
 
         if (!channel) {
             return;
@@ -306,6 +350,33 @@ export class DialogueRuntime {
         } catch (err: unknown) {
             this.#host.log(`rule-engine: failed to inject note into #${channel.name}: ${String(err)}`);
         }
+    }
+
+    /** Route [engine] notes: muted for "none"; kept out of capture channels when forwarding unless explicitly requested. */
+    #resolveEngineNoteChannel(event: EngineEvent): string | undefined {
+        const rule = event.ruleId
+            ? this.ruleEngine.rules.find((r) => r.id === event.ruleId)
+            : undefined;
+        const actionFromDetails = event.details.action as { forwardToChannel?: string } | undefined;
+        const notifications =
+            rule?.notifications ??
+            (event.details.notifications as ConversationRule["notifications"] | undefined);
+        const forwardTo =
+            rule?.action.forwardToChannel ??
+            actionFromDetails?.forwardToChannel ??
+            (typeof event.details.forwardToChannel === "string"
+                ? event.details.forwardToChannel
+                : undefined);
+
+        if (notifications === "none") {
+            return undefined;
+        }
+
+        if (notifications === "target" || (notifications === undefined && Boolean(forwardTo))) {
+            return LIFECYCLE_EVENTS.has(event.type) && forwardTo ? forwardTo : undefined;
+        }
+
+        return event.channel;
     }
 
     /** Stop rule ticks and file watchers idempotently during server shutdown. */
@@ -598,29 +669,6 @@ export class DialogueRuntime {
             type: "engine_version_changed",
             details: { version: this.#host.build, pid: this.#host.pid },
         });
-    }
-
-    async #forwardSummary(
-        sourceChannelId: ConversationId,
-        targetChannelName: string,
-        answerEntryId: number,
-    ): Promise<void> {
-        try {
-            const answerRecord = await this.#host.visibleEntry(sourceChannelId, answerEntryId);
-
-            if (this.#closed || !answerRecord) {
-                return;
-            }
-
-            const answerText = entryWords(answerRecord).text.trim();
-
-            if (answerText !== "") {
-                await this.channels.post(sourceChannelId, targetChannelName, answerText);
-                this.#host.log(`rule-engine: forwarded summary to #${targetChannelName}`);
-            }
-        } catch (err: unknown) {
-            this.#host.log(`rule-engine forward error: ${String(err)}`);
-        }
     }
 
     #markArchived(archiveFile: string): void {
